@@ -8,6 +8,7 @@ HEADERS += \
     src/backend.h \
     src/curves.h \
     src/gamepads.h \
+    src/lightbar.h \
     src/remapper.h \
     src/theme.h \
     src/translator.h
@@ -17,6 +18,7 @@ SOURCES += \
     src/backend.cpp \
     src/curves.cpp \
     src/gamepads.cpp \
+    src/lightbar.cpp \
     src/remapper.cpp \
     src/theme.cpp \
     src/translator.cpp

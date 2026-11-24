@@ -29,6 +29,7 @@ ApplicationWindow {
     Shortcut { sequence: "D"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.selectNext() }
     Shortcut { sequence: "P"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.selectProfile((backend.profileIndex + 1) % backend.profileNames.length) }
     Shortcut { sequence: "I"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.showDescriptions = !win.showDescriptions }
+    Shortcut { sequence: "L"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.lightbar.mode = (backend.lightbar.mode + 1) % 4 }
     Shortcut { sequence: "H"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.hideFromGames = !backend.hideFromGames }
     Shortcut { sequence: "R"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.resetProfile() }
     Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.undo() }
@@ -40,6 +41,7 @@ ApplicationWindow {
         ["D", qsTr("Show the next controller")],
         ["I", qsTr("Show or hide descriptions")],
         ["H", qsTr("Hide the real controller from games")],
+        ["L", qsTr("Next lightbar mode")],
         ["R", qsTr("Reset the profile to its preset")],
         ["Esc", qsTr("Stop measuring")],
         ["Ctrl+Z", qsTr("Undo")],
@@ -122,43 +124,15 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle {
-                    visible: backend.exposed
+                SplitScreenCard {
+                    visible: win.hasController && (backend.exposed || backend.notice.length > 0)
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
-                    implicitHeight: exposedRow.implicitHeight + 20
-                    radius: theme.radius
-                    color: "#1d1a10"
-                    border.color: Qt.darker(theme.accent, 2.2)
-                    RowLayout {
-                        id: exposedRow
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 12
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.Wrap
-                            color: "#e4e4e7"
-                            text: qsTr("Steam and Proton can read this controller directly, skip your settings, and see two controllers: Start on the second one joins split screen. Hiding it from games stops that; it asks for your password once.")
-                        }
-                        Button {
-                            text: qsTr("Hide from games")
-                            focusPolicy: Qt.NoFocus
-                            Material.foreground: theme.accentForeground
-                            background: Rectangle {
-                                implicitHeight: 36
-                                radius: Math.min(4, theme.radius)
-                                color: parent.down ? Qt.darker(theme.accent, 1.2) : theme.accent
-                            }
-                            enabled: !backend.hideBusy
-                            onClicked: backend.hideFromGames = true
-                        }
-                    }
                 }
 
                 Rectangle {
-                    visible: backend.notice.length > 0 || (backend.calibrating.length === 0 && backend.calibrationMessage.length > 0)
+                    visible: backend.calibrating.length === 0 && backend.calibrationMessage.length > 0
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
@@ -174,7 +148,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
                             color: "#e4e4e7"
-                            text: backend.notice.length > 0 ? backend.notice : backend.calibrationMessage
+                            text: backend.calibrationMessage
                         }
                     }
                 }
@@ -310,6 +284,13 @@ ApplicationWindow {
                             }
                         }
                     }
+                }
+
+                LightbarCard {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
                 }
 
                 RowLayout {

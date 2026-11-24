@@ -14,6 +14,7 @@
 
 #include "curves.h"
 #include "gamepads.h"
+#include "lightbar.h"
 
 class QThread;
 class Remapper;
@@ -28,6 +29,10 @@ class Backend : public QObject {
     Q_PROPERTY(bool exposed READ exposed NOTIFY hideChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY hideChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
+    Q_PROPERTY(bool lightbarAllowed READ lightbarAllowed NOTIFY hideChanged)
+    Q_PROPERTY(Lightbar *lightbar READ lightbar CONSTANT)
+    Q_PROPERTY(int battery READ battery NOTIFY batteryChanged)
+    Q_PROPERTY(bool charging READ charging NOTIFY batteryChanged)
 
     Q_PROPERTY(int revision READ revision NOTIFY profileChanged)
     Q_PROPERTY(bool canUndo READ canUndo NOTIFY profileChanged)
@@ -68,6 +73,10 @@ public:
     bool exposed() const;
     QString notice() const { return m_notice; }
     QString error() const;
+    bool lightbarAllowed() const { return m_lightbarRule; }
+    Lightbar *lightbar() { return &m_lightbar; }
+    int battery() const { return m_battery; }
+    bool charging() const { return m_charging; }
 
     int revision() const { return m_revision; }
     bool canUndo() const { return !m_undo.isEmpty(); }
@@ -127,6 +136,9 @@ public:
     Q_INVOKABLE void calibrate(const QString &side, const QString &kind);
     Q_INVOKABLE void cancelCalibration();
 
+    // Installs the udev rule that lets deadzone set the lightbar.
+    Q_INVOKABLE void allowLightbar();
+
     Q_INVOKABLE void selectNext();
     Q_INVOKABLE void rescan();
     Q_INVOKABLE void shutdown();
@@ -134,7 +146,8 @@ public:
     static QString defaultConfigPath();
     static QString rulePath();
     // The udev rule that keeps games off these controllers' raw HID nodes.
-    static QString ruleText(const QStringList &ids);
+    // With a user name, it also hands that user the lightbar LEDs.
+    static QString ruleText(const QStringList &ids, const QString &lightbarUser = {});
     static QStringList ruleIds(const QString &text);
     // Every process whose command line contains one of the matches; the
     // first match found wins. procDirectory is for tests.
@@ -148,6 +161,7 @@ signals:
     void profileChanged();
     void calibrationChanged();
     void liveChanged();
+    void batteryChanged();
 
 private:
     struct Worker {
@@ -174,6 +188,8 @@ private:
     void pollLive();
     void finishCalibration();
     void readRule();
+    void writeRules(const QStringList &ids, bool lightbar);
+    void updateBattery();
     QString uniqueName(const QString &base) const;
 
     QString m_configPath;
@@ -208,6 +224,10 @@ private:
         QString message;
     } m_calibration;
 
+    Lightbar m_lightbar;
+    int m_battery = -1;
+    bool m_charging = false;
+    bool m_lightbarRule = false;
     QStringList m_hiddenIds;
     QProcess *m_hider = nullptr;
     QString m_notice, m_hideError;

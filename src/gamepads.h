@@ -10,6 +10,8 @@ struct GamepadInfo {
     QString id;         // Stable across reconnects: vendor:product plus serial or name.
     QString driver;     // Kernel driver, e.g. "playstation" or "xpad".
     QString hidraw;     // /dev/hidrawN, when the controller has one games could read directly.
+    QString lightbar;   // The red LED's sysfs directory (green and blue sit beside it), or empty.
+    QString battery;    // The battery's power_supply directory, or empty.
     int vendor = 0, product = 0;
     bool readable = false;
 

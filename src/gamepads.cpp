@@ -59,6 +59,14 @@ QList<GamepadInfo> scan(const QString &inputDirectory, const QString &sysClass)
         const auto hidraws = QDir(sys + "/device/hidraw").entryList(QDir::Dirs | QDir::NoDotAndDotDot);
         if (!hidraws.isEmpty())
             info.hidraw = "/dev/" + hidraws.first();
+        // The DualShock 4's lightbar is three LEDs named after the input
+        // device: inputN:red, inputN:green, inputN:blue.
+        const auto leds = QDir(sys + "/device/leds").entryList({"*:red"}, QDir::Dirs | QDir::NoDotAndDotDot);
+        if (!leds.isEmpty())
+            info.lightbar = QDir(sys + "/device/leds/" + leds.first()).absolutePath();
+        const auto supplies = QDir(sys + "/device/power_supply").entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        if (!supplies.isEmpty())
+            info.battery = QDir(sys + "/device/power_supply/" + supplies.first()).absolutePath();
 
         // Capabilities come from sysfs, readable without access to the
         // device, so motion sensors and touchpads that share a controller's

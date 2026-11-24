@@ -19,7 +19,7 @@ hide them).
 | Deadzone | Below this the stick reads as centered. Output starts from zero at the edge, so there is no jump. |
 | Outer edge | Past this the stick reads as fully pushed, for sticks that never quite reach the rim. |
 | Anti-deadzone | The smallest output once you leave the deadzone, to cancel a game's own deadzone. |
-| Square output | Lets diagonals reach full travel on both axes, like an Xbox stick. Round-gated sticks such as the DualShock 4 otherwise stop near 71% per axis at a diagonal. |
+| Diagonal reach | Lets diagonals reach full travel on both axes, like an Xbox stick. Round-gated sticks such as the DualShock 4 otherwise stop near 71% per axis at a diagonal. Independent of the deadzone shape: the shape is the center, this is the rim. |
 | Response | **Curve**: one exponent, 1 is linear. **Custom**: drag points on the graph to draw your own. |
 | Triggers | Deadzone, outer edge, and anti-deadzone for each trigger. |
 
@@ -34,7 +34,7 @@ setting up its game. Give a profile part of a game's program name, like
 `RocketLeague.exe`, and it switches in while that game runs and switches back
 when it closes. Settings save on their own to `~/.config/deadzone/config.json`.
 
-The Rocket League preset uses a small circular deadzone, square output on the
+The Rocket League preset uses a small circular deadzone, full diagonal reach on the
 left stick so a diagonal gives full steer and full pitch at once, and a 10%
 trigger anti-deadzone to cancel the one Rocket League adds to the triggers on
 its own.
@@ -48,11 +48,20 @@ its own.
 | D | Show the next controller |
 | I | Show or hide descriptions |
 | H | Hide the real controller from games |
+| L | Next lightbar mode |
 | R | Reset the profile to its preset |
 | Esc | Stop measuring |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | ? | Show shortcuts |
 | Q | Quit |
+
+## Lightbar and battery
+
+The window shows the controller's battery, and the lightbar can stay as it
+is, take one color, cycle through a rainbow, or show the battery level from
+green to red. Setting it needs a one-time permission, added to the same udev
+rule as hiding (it asks for your password). The controller gets its own
+color back when Deadzone closes. `L` cycles the lightbar mode.
 
 ## Hiding the real controller
 

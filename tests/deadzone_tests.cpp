@@ -9,6 +9,9 @@
 #include "backend.h"
 #include "curves.h"
 #include "gamepads.h"
+#include "lightbar.h"
+#include <QProcess>
+#include <QStandardPaths>
 #include "theme.h"
 #include "translator.h"
 
@@ -200,7 +203,74 @@ private slots:
     {
         const QString text = Backend::ruleText({"054c:09cc", "054C:0CE6"});
         QVERIFY(text.contains(R"(KERNELS=="*054C:09CC*", TAG-="uaccess")"));
+        QVERIFY(!text.contains("leds"));
         QCOMPARE(Backend::ruleIds(text), QStringList({"054C:09CC", "054C:0CE6"}));
+    }
+
+    void udevRuleIsValid()
+    {
+        const QString text = Backend::ruleText({"054c:09cc"}, "someone");
+        QVERIFY(text.contains("chown someone /sys%p/brightness"));
+        // Anything that does not look like a user name stays out of the rule.
+        QVERIFY(!Backend::ruleText({}, "x\"; rm -rf /").contains("chown"));
+        const QString udevadm = QStandardPaths::findExecutable("udevadm");
+        if (udevadm.isEmpty())
+            QSKIP("udevadm is not installed");
+        QTemporaryDir dir;
+        write(dir.filePath("72-deadzone.rules"), text.toUtf8());
+        QProcess verify;
+        verify.start(udevadm, {"verify", "--no-summary", dir.filePath("72-deadzone.rules")});
+        QVERIFY(verify.waitForFinished());
+        QVERIFY2(verify.exitCode() == 0, verify.readAllStandardError().constData());
+    }
+
+    void lightbarColors()
+    {
+        QCOMPARE(Lightbar::rainbowAt(0, 0.25).hsvHue(), 0);
+        QCOMPARE(Lightbar::rainbowAt(2, 0.25).hsvHue(), 180);
+        QCOMPARE(Lightbar::batteryColor(0).hsvHue(), 0);
+        QVERIFY(qAbs(Lightbar::batteryColor(100).hsvHue() - 119) <= 1);
+        QCOMPARE(Lightbar::channel("/sys/class/leds/input57:red", "green"), QString("/sys/class/leds/input57:green/brightness"));
+    }
+
+    void lightbarWritesAndRestores()
+    {
+        // A fake LED directory stands in for the kernel's.
+        QTemporaryDir dir;
+        for (const char *c : {"red", "green", "blue", "global"}) {
+            QDir(dir.path()).mkpath(QString("input9:%1").arg(c));
+            write(dir.filePath(QString("input9:%1/brightness").arg(c)), c == QByteArray("blue") ? "64" : "0");
+        }
+        auto read = [&](const char *c) {
+            QFile f(dir.filePath(QString("input9:%1/brightness").arg(c)));
+            f.open(QIODevice::ReadOnly);
+            return f.readAll().toInt();
+        };
+        Lightbar lightbar;
+        lightbar.setTargets({dir.filePath("input9:red")});
+        QVERIFY(lightbar.writable());
+        lightbar.setColor(QColor(255, 0, 128));
+        lightbar.setMode(Lightbar::Solid);
+        QCOMPARE(read("red"), 255);
+        QCOMPARE(read("blue"), 128);
+        QCOMPARE(read("global"), 1);
+        lightbar.setMode(Lightbar::Off);
+        QCOMPARE(read("red"), 0);
+        QCOMPARE(read("blue"), 64);
+    }
+
+    void lightbarSettingsRoundTrip()
+    {
+        Lightbar a;
+        a.setColor(QColor("#123456"));
+        a.setSpeed(0.5);
+        Lightbar b;
+        QJsonObject o = a.toJson();
+        o["mode"] = "rainbow";
+        b.load(o);
+        QCOMPARE(b.mode(), int(Lightbar::Rainbow));
+        QCOMPARE(b.color(), QColor("#123456"));
+        QCOMPARE(b.speed(), 0.5);
     }
 
     void profileRoundTripsAndClamps()

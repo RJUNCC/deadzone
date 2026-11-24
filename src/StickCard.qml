@@ -46,20 +46,6 @@ Rectangle {
                 color: "#e4e4e7"
                 Layout.fillWidth: true
             }
-            Segmented {
-                options: [qsTr("Circle"), qsTr("Square"), qsTr("Cross")]
-                current: root.shape
-                onPicked: index => backend.change(root.side + ".shape", index)
-            }
-        }
-
-        Label {
-            visible: root.descriptions
-            Layout.fillWidth: true
-            text: root.shapeDescriptions[root.shape]
-            wrapMode: Text.Wrap
-            color: "#76767e"
-            font.pixelSize: 12
         }
 
         RowLayout {
@@ -83,7 +69,7 @@ Rectangle {
                 }
                 Label {
                     Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("In %1%   Out %2%").arg(root.percent(root.raw)).arg(root.percent(root.out))
+                    text: qsTr("Out  X %1%  Y %2%").arg(Math.round(Math.abs(root.out.x) * 100)).arg(Math.round(Math.abs(root.out.y) * 100))
                     color: "#8b8b93"
                     font.pixelSize: 12
                     font.features: { "tnum": 1 }
@@ -146,6 +132,30 @@ Rectangle {
                                  : qsTr("Measure drift: let go of the stick for three seconds and the deadzone is set just above its wobble. Measure edge: roll the stick around the rim for five seconds and the outer edge is set where every direction still reaches.")
         }
 
+        SectionLabel { text: qsTr("Center") }
+        RowLayout {
+            Layout.fillWidth: true
+            Label {
+                text: qsTr("Deadzone shape")
+                color: "#c9c9cf"
+                font.pixelSize: 13
+                Layout.fillWidth: true
+            }
+            Segmented {
+                options: [qsTr("Circle"), qsTr("Square"), qsTr("Cross")]
+                current: root.shape
+                onPicked: index => backend.change(root.side + ".shape", index)
+            }
+        }
+        Label {
+            visible: root.descriptions
+            Layout.fillWidth: true
+            Layout.topMargin: -6
+            text: root.shapeDescriptions[root.shape]
+            wrapMode: Text.Wrap
+            color: "#76767e"
+            font.pixelSize: 12
+        }
         SettingSlider {
             Layout.fillWidth: true
             key: root.side + ".inner"
@@ -155,6 +165,15 @@ Rectangle {
         }
         SettingSlider {
             Layout.fillWidth: true
+            key: root.side + ".anti"
+            label: qsTr("Anti-deadzone")
+            description: qsTr("Where the output starts once you leave the deadzone. Set it to a game's own deadzone so the two do not add up.")
+            to: 0.5
+        }
+
+        SectionLabel { text: qsTr("Edge") }
+        SettingSlider {
+            Layout.fillWidth: true
             key: root.side + ".outer"
             label: qsTr("Outer edge")
             description: qsTr("How far you push before games see full tilt. Lower it if your stick never quite reaches 100% in some directions.")
@@ -162,22 +181,16 @@ Rectangle {
         }
         SettingSlider {
             Layout.fillWidth: true
-            key: root.side + ".anti"
-            label: qsTr("Anti-deadzone")
-            description: qsTr("Where the output starts once you leave the deadzone. Set it to a game's own deadzone so the two do not add up.")
-            to: 0.5
-        }
-        SettingSlider {
-            Layout.fillWidth: true
             key: root.side + ".square"
-            label: qsTr("Square output")
-            description: qsTr("Lets diagonals reach full tilt on both axes, like an Xbox stick. A round stick like the DualShock 4 otherwise tops out near 71% on each axis at a diagonal.")
+            label: qsTr("Diagonal reach")
+            description: qsTr("Works with any deadzone shape; it changes the rim, not the center. A round stick like the DualShock 4 only sends about 71% on each axis when pushed fully diagonal. At 100% that diagonal sends 100% on both, like an Xbox stick, which the Out X and Y readout shows. The dashed outline is the reach.")
         }
 
+        SectionLabel { text: qsTr("Response") }
         RowLayout {
             Layout.fillWidth: true
             Label {
-                text: qsTr("Response")
+                text: qsTr("Shape of the response")
                 color: "#c9c9cf"
                 font.pixelSize: 13
                 Layout.fillWidth: true

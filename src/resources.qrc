@@ -8,6 +8,9 @@
         <file alias="Segmented.qml">Segmented.qml</file>
         <file alias="CurveEditor.qml">CurveEditor.qml</file>
         <file alias="ProfileBar.qml">ProfileBar.qml</file>
+        <file alias="SectionLabel.qml">SectionLabel.qml</file>
+        <file alias="SplitScreenCard.qml">SplitScreenCard.qml</file>
+        <file alias="LightbarCard.qml">LightbarCard.qml</file>
         <file alias="i18n/es.json">i18n/es.json</file>
     </qresource>
 </RCC>

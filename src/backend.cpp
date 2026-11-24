@@ -34,21 +34,23 @@ bool readable(const QString &path)
     return ::access(QFile::encodeName(path).constData(), R_OK) == 0;
 }
 
-// The fixed scripts pkexec runs as root. Everything variable arrives as a
-// positional argument, never inside the script text.
-const char *hideScript =
+// The fixed script pkexec runs as root. Everything variable arrives as a
+// positional argument, never inside the script text: the rule to install
+// (empty removes it), the user, whether raw HID nodes are being hidden,
+// then the nodes and LED files to fix up right away.
+const char *ruleScript =
     "set -e\n"
-    "install -m 644 \"$1\" /etc/udev/rules.d/72-deadzone.rules\n"
+    "if [ -s \"$1\" ]; then install -m 644 \"$1\" /etc/udev/rules.d/72-deadzone.rules;\n"
+    "else rm -f /etc/udev/rules.d/72-deadzone.rules; fi\n"
     "udevadm control --reload\n"
-    "user=\"$2\"; shift 2\n"
-    "for node in \"$@\"; do setfacl -x \"u:$user\" \"$node\" 2>/dev/null || true; done\n";
-
-const char *showScript =
-    "set -e\n"
-    "rm -f /etc/udev/rules.d/72-deadzone.rules\n"
-    "udevadm control --reload\n"
-    "user=\"$1\"; shift\n"
-    "for node in \"$@\"; do setfacl -m \"u:$user:rw\" \"$node\" 2>/dev/null || true; done\n";
+    "user=\"$2\"; mode=\"$3\"; shift 3\n"
+    "for path in \"$@\"; do\n"
+    "  case \"$path\" in\n"
+    "    /dev/hidraw*) if [ \"$mode\" = hide ]; then setfacl -x \"u:$user\" \"$path\" 2>/dev/null || true;\n"
+    "                  else setfacl -m \"u:$user:rw\" \"$path\" 2>/dev/null || true; fi ;;\n"
+    "    /sys/*/brightness) chown \"$user\" \"$path\" 2>/dev/null || true ;;\n"
+    "  esac\n"
+    "done\n";
 
 }
 
@@ -57,6 +59,7 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent)
       m_watchDevices(watchDevices)
 {
     load();
+    connect(&m_lightbar, &Lightbar::changed, this, &Backend::save);
 
     // Hotplug shows up as /dev/input changing; access rights land a moment
     // after the node, so wait briefly before looking.
@@ -72,6 +75,7 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent)
     // A slow safety net for permission changes the watcher never sees.
     m_fallbackScan.setInterval(3000);
     connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::rescan);
+    connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::updateBattery);
 
     m_games.setInterval(2000);
     connect(&m_games, &QTimer::timeout, this, &Backend::checkGames);
@@ -108,6 +112,7 @@ void Backend::load()
     }
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
     m_active = root.value("active").toBool(true);
+    m_lightbar.load(root.value("lightbar").toObject());
 
     m_profiles.clear();
     for (const QJsonValue &value : root.value("profiles").toArray())
@@ -134,7 +139,8 @@ void Backend::save()
     QJsonArray profiles;
     for (const Profile &profile : std::as_const(m_profiles))
         profiles.append(profile.toJson());
-    const QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active}};
+    const QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active},
+                           {"lightbar", m_lightbar.toJson()}};
     file.write(QJsonDocument(root).toJson());
     file.commit();
 }
@@ -154,6 +160,7 @@ void Backend::setSelected(int index)
     m_selected = index;
     emit controllersChanged();
     emit errorChanged();
+    updateBattery();
 }
 
 void Backend::selectNext()
@@ -434,7 +441,8 @@ QString Backend::presetTips(const QString &preset) const
         return tr("In Rocket League's controller settings, set Controller Deadzone to its lowest value so it does not stack on this one; if you keep some, set Anti-deadzone here to the same amount. "
                   "Dodge Deadzone is a different thing: how far you push before a jump becomes a flip in that direction. Leave it where flips feel right; many players use 0.50 to 0.70. "
                   "Steering and Aerial Sensitivity are taste; 1.20 to 1.60 is common. "
-                  "Here, run Measure drift on the left stick and Measure edge on both, and keep Square output at 100% so a diagonal gives full steer and full pitch together, which half-flips and turning while boosting need.");
+                  "Here, run Measure drift on the left stick and Measure edge on both, and keep Diagonal reach at 100% so a diagonal gives full steer and full pitch together, which half-flips and turning while boosting need. "
+                  "If Start opens split screen in training, the game sees your controller twice; the yellow card at the top walks through the fix.");
     if (preset == "shooter")
         return tr("Turn the game's own aim deadzone as low as it goes and let this one handle drift. Raise Response curve on the right stick for finer aim, lower it if turning feels slow. The short trigger travel fires sooner.");
     if (preset == "racing")
@@ -580,8 +588,34 @@ void Backend::rescan()
             m_selected = 0;
         emit controllersChanged();
         emit errorChanged();
+        QStringList lightbars;
+        for (const GamepadInfo &info : std::as_const(m_devices))
+            if (!info.lightbar.isEmpty())
+                lightbars.append(info.lightbar);
+        m_lightbar.setTargets(lightbars);
+        updateBattery();
     }
     emit hideChanged();
+}
+
+void Backend::updateBattery()
+{
+    int percent = -1;
+    bool charging = false;
+    if (m_selected >= 0 && m_selected < m_devices.size() && !m_devices.at(m_selected).battery.isEmpty()) {
+        const QString dir = m_devices.at(m_selected).battery;
+        QFile capacity(dir + "/capacity"), status(dir + "/status");
+        if (capacity.open(QIODevice::ReadOnly))
+            percent = capacity.readAll().trimmed().toInt();
+        if (status.open(QIODevice::ReadOnly))
+            charging = status.readAll().trimmed() == "Charging";
+    }
+    m_lightbar.setBattery(percent);
+    if (percent != m_battery || charging != m_charging) {
+        m_battery = percent;
+        m_charging = charging;
+        emit batteryChanged();
+    }
 }
 
 void Backend::startWorker(const GamepadInfo &info)
@@ -678,13 +712,21 @@ QString Backend::rulePath()
     return "/etc/udev/rules.d/72-deadzone.rules";
 }
 
-QString Backend::ruleText(const QStringList &ids)
+QString Backend::ruleText(const QStringList &ids, const QString &lightbarUser)
 {
-    QString text = "# Written by deadzone. Keeps games and Steam off these controllers' raw HID\n"
-                   "# nodes so they only see deadzone's virtual pad. Turn off \"Hide from games\"\n"
-                   "# in deadzone, or delete this file, to undo.\n";
+    QString text = "# Written by deadzone; change it from deadzone's window, or delete this file.\n";
+    if (!ids.isEmpty())
+        text += "# Keeps games and Steam off these controllers' raw HID nodes, so they only\n"
+                "# see deadzone's virtual pad.\n";
     for (const QString &id : ids)
         text += QString("KERNEL==\"hidraw*\", KERNELS==\"*%1*\", TAG-=\"uaccess\", MODE=\"0600\"\n").arg(id.toUpper());
+    // A user name is the only thing from outside that lands in the rule,
+    // so it must look like one.
+    static const QRegularExpression validUser("^[a-z_][a-z0-9_-]*$");
+    if (validUser.match(lightbarUser).hasMatch())
+        text += QString("# Lets %1 set PlayStation controller lightbars.\n"
+                        "ACTION==\"add\", SUBSYSTEM==\"leds\", KERNEL==\"*:red|*:green|*:blue|*:global\", "
+                        "DRIVERS==\"playstation|sony\", RUN+=\"/usr/bin/chown %1 /sys%p/brightness\"\n").arg(lightbarUser);
     return text;
 }
 
@@ -701,7 +743,9 @@ QStringList Backend::ruleIds(const QString &text)
 void Backend::readRule()
 {
     QFile file(rulePath());
-    m_hiddenIds = file.open(QIODevice::ReadOnly) ? ruleIds(QString::fromUtf8(file.readAll())) : QStringList();
+    const QString text = file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
+    m_hiddenIds = ruleIds(text);
+    m_lightbarRule = text.contains("SUBSYSTEM==\"leds\"");
 }
 
 bool Backend::exposed() const
@@ -716,51 +760,65 @@ bool Backend::exposed() const
 
 void Backend::setHideFromGames(bool hide)
 {
-    if (m_hider)
-        return;
     QStringList ids = hide ? m_hiddenIds : QStringList();
-    QStringList nodes;
-    for (const Worker &worker : std::as_const(m_workers)) {
-        if (worker.info.hidraw.isEmpty())
-            continue;
-        nodes.append(worker.info.hidraw);
-        if (hide)
-            ids.append(QString("%1:%2").arg(worker.info.vendor, 4, 16, QChar('0')).arg(worker.info.product, 4, 16, QChar('0')).toUpper());
-    }
+    if (hide)
+        for (const Worker &worker : std::as_const(m_workers))
+            if (!worker.info.hidraw.isEmpty())
+                ids.append(QString("%1:%2").arg(worker.info.vendor, 4, 16, QChar('0')).arg(worker.info.product, 4, 16, QChar('0')).toUpper());
     ids.removeDuplicates();
     if (hide && ids.isEmpty()) {
         m_hideError = tr("No connected controller has a raw HID node to hide.");
         emit errorChanged();
         return;
     }
-    if (!hide && m_hiddenIds.isEmpty())
+    if (ids == m_hiddenIds && !(hide && exposed()))
         return;
+    writeRules(ids, m_lightbarRule);
+}
 
-    QStringList arguments{"/bin/sh", "-c", hide ? hideScript : showScript, "deadzone-hide"};
+void Backend::allowLightbar()
+{
+    if (!m_lightbarRule || !m_lightbar.writable())
+        writeRules(m_hiddenIds, true);
+}
+
+void Backend::writeRules(const QStringList &ids, bool lightbar)
+{
+    if (m_hider)
+        return;
     auto *ruleFile = new QTemporaryFile(this);
-    if (hide) {
-        if (!ruleFile->open()) {
-            delete ruleFile;
-            return;
-        }
-        ruleFile->write(ruleText(ids).toUtf8());
-        ruleFile->flush();
-        arguments << ruleFile->fileName();
+    if (!ruleFile->open()) {
+        delete ruleFile;
+        return;
     }
-    arguments << userName() << nodes;
+    const QString user = userName();
+    if (!ids.isEmpty() || lightbar)
+        ruleFile->write(ruleText(ids, lightbar ? user : QString()).toUtf8());
+    ruleFile->flush();
+
+    const bool hiding = !ids.isEmpty();
+    const bool hidingMore = ids != m_hiddenIds && hiding;
+    QStringList paths;
+    for (const Worker &worker : std::as_const(m_workers))
+        if (!worker.info.hidraw.isEmpty())
+            paths.append(worker.info.hidraw);
+    if (lightbar)
+        paths += m_lightbar.files();
 
     m_hideError.clear();
     m_hider = new QProcess(this);
-    connect(m_hider, &QProcess::finished, this, [this, hide, ruleFile](int code, QProcess::ExitStatus status) {
+    connect(m_hider, &QProcess::finished, this, [this, hidingMore, ruleFile](int code, QProcess::ExitStatus status) {
         m_hider->deleteLater();
         m_hider = nullptr;
         ruleFile->deleteLater();
         readRule();
         if (status == QProcess::NormalExit && code == 0) {
-            // Programs that already opened the node keep it until it goes
+            // Programs that already opened the raw node keep it until it goes
             // away, which a reconnect does.
-            m_notice = hide ? tr("Hidden. Turn the controller off and on once (or restart Steam) so games already running let go of it.")
-                            : QString();
+            if (hidingMore)
+                m_notice = tr("Hidden. Now turn the controller off and on once (or restart Steam) so games already running let go of it.");
+            else if (m_hiddenIds.isEmpty())
+                m_notice.clear();
         } else if (code == 126) {
             m_hideError = tr("Cancelled: the password prompt was dismissed.");
         } else {
@@ -768,18 +826,20 @@ void Backend::setHideFromGames(bool hide)
         }
         emit hideChanged();
         emit errorChanged();
+        emit m_lightbar.targetsChanged();
     });
     connect(m_hider, &QProcess::errorOccurred, this, [this, ruleFile](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart)
             return;
-        m_hideError = tr("pkexec is missing, so the controller cannot be hidden from games.");
+        m_hideError = tr("pkexec is missing, so deadzone cannot change the udev rule.");
         m_hider->deleteLater();
         m_hider = nullptr;
         ruleFile->deleteLater();
         emit hideChanged();
         emit errorChanged();
     });
-    m_hider->start("pkexec", arguments);
+    m_hider->start("pkexec", QStringList{"/bin/sh", "-c", ruleScript, "deadzone-rules", ruleFile->fileName(), user,
+                                         hiding ? "hide" : "show"} + paths);
     emit hideChanged();
 }
 
@@ -787,6 +847,9 @@ void Backend::shutdown()
 {
     if (m_hider)
         m_hider->waitForFinished(120000);
+    // The controller goes back to its own color when deadzone stops.
+    if (m_lightbar.mode() != Lightbar::Off)
+        m_lightbar.restore();
     for (const QString &id : m_workers.keys())
         stopWorker(id);
 }
