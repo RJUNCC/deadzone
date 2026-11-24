@@ -129,8 +129,38 @@ ApplicationWindow {
                     }
                 }
 
+                // Rocket League sees only deadzone's pad, and deadzone is not remapping.
+                Rectangle {
+                    visible: backend.gameRunning && backend.launchReady && !backend.remapping
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    implicitHeight: deadRow.implicitHeight + 20
+                    radius: theme.radius
+                    color: "#3a1418"
+                    border.color: "#6b2028"
+                    RowLayout {
+                        id: deadRow
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 12
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: "#ffb4b4"
+                            text: qsTr("Rocket League is running and set to ignore your real controller, but deadzone is not remapping, so the game has no controller at all.")
+                        }
+                        Button {
+                            text: qsTr("Turn remapping on")
+                            focusPolicy: Qt.NoFocus
+                            Material.roundedScale: theme.radius
+                            onClicked: { backend.active = true; if (backend.onlyWhileGame && !backend.gameRunning) backend.onlyWhileGame = false }
+                        }
+                    }
+                }
+
                 SplitScreenCard {
-                    visible: win.hasController && (backend.exposed || (backend.hideFromGames && backend.rawHeldBy.length > 0))
+                    visible: win.hasController
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20

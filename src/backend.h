@@ -67,6 +67,10 @@ class Backend : public QObject {
     Q_PROPERTY(QString switchedTo READ switchedTo NOTIFY switched)
     Q_PROPERTY(QVariantList health READ health NOTIFY historyChanged)
     Q_PROPERTY(QString healthTrend READ healthTrend NOTIFY historyChanged)
+    Q_PROPERTY(QString launchOptions READ launchOptions NOTIFY setupChanged)
+    Q_PROPERTY(QString suggestedLaunch READ suggestedLaunch NOTIFY setupChanged)
+    Q_PROPERTY(bool launchReady READ launchReady NOTIFY setupChanged)
+    Q_PROPERTY(bool steamInputOff READ steamInputOff WRITE setSteamInputOff NOTIFY setupChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY sessionChanged)
     Q_PROPERTY(int sessionElapsed READ sessionElapsed NOTIFY sessionChanged)
     Q_PROPERTY(int sessionDuration READ sessionDuration NOTIFY sessionChanged)
@@ -145,6 +149,13 @@ public:
     QString switchedTo() const { return m_switchedTo; }
     QVariantList health() const;
     QString healthTrend() const;
+    QString launchOptions() const { return m_launchOptions; }
+    QString suggestedLaunch() const;
+    bool launchReady() const { return m_launchOptions.contains("SDL_GAMECONTROLLER_IGNORE_DEVICES=" + ignoreList()); }
+    bool steamInputOff() const { return m_steamInputOff; }
+    void setSteamInputOff(bool off);
+    // Rocket League's launch options from Steam's localconfig.vdf text.
+    static QString readLaunchOptions(const QString &vdf, const QString &app = "252950");
     bool recording() const { return m_recording; }
     int sessionElapsed() const { return m_recording ? int(m_sessionClock.elapsed() / 1000) : m_sessionSeconds; }
     int sessionDuration() const { return m_sessionDuration; }
@@ -275,6 +286,7 @@ signals:
     void settingsChanged();
     void switched();
     void historyChanged();
+    void setupChanged();
 
 private:
     struct Worker {
@@ -307,6 +319,8 @@ private:
     void stepProfile(int step);
     void publishOverlay();
     QString controllerId() const;
+    QString ignoreList() const;
+    void refreshLaunchOptions();
     void checkHolders();
     QString uniqueName(const QString &base) const;
 
@@ -351,6 +365,8 @@ private:
     bool m_overlayEnabled = false, m_comboSwitch = true, m_lowBatteryWarned = false;
     int m_overlayPort = 7337;
     double m_rumble = 1.0;
+    QString m_launchOptions;
+    bool m_steamInputOff = false;
     QString m_switchedTo;
     QTimer m_switchedClear;
     Session m_session;

@@ -119,17 +119,23 @@ green to red. Setting it needs a one-time permission, added to the same udev
 rule as hiding (it asks for your password). The controller gets its own
 color back when Deadzone closes. `L` cycles the lightbar mode.
 
-## Hiding the real controller
+## Setting up Rocket League
 
-Steam and Proton read DualShock 4 and DualSense controllers through their raw
-HID node, which skips Deadzone, so a game sees two controllers: Start on the
-second one joins split screen. **Hide from games** installs
-`/etc/udev/rules.d/72-deadzone.rules` (it asks for your password), which keeps
-that node away from your user now and on every reconnect. Turn the
-controller off and on once afterwards (unplug and replug the cable) so
-programs that already opened it let go; the window ticks this off once
-nothing has it open any more. With Deadzone closed, games still get the controller the ordinary way.
-Turning the switch off removes the rule.
+Linux cannot hide a controller from other programs: while Deadzone holds
+the DualShock 4, Steam still lists it (silent) and makes it player 1, so
+your input arrives as player 2. The setup card at the top of the window
+walks through the fix and ticks off each step:
+
+1. **Hide from games** installs `/etc/udev/rules.d/72-deadzone.rules`, which
+   keeps the controller's raw HID node away from Steam and Proton.
+2. **Turn off Steam Input** for Rocket League (Properties, Controller), so
+   Steam neither lists the real controller nor adds its own deadzones.
+3. **Launch options**: prefix them with
+   `SDL_GAMECONTROLLER_IGNORE_DEVICES=0x054c/0x09cc`, so the game ignores the
+   real controller. The window reads your current options and builds the
+   line to paste.
+4. **Keep running without the window** and **Remap only while Rocket League
+   runs**, because after step 3 the game only sees Deadzone's pad.
 
 ## Without the window
 

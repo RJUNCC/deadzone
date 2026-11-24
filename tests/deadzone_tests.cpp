@@ -19,6 +19,24 @@
 #include "theme.h"
 #include "translator.h"
 
+// Plain literals: moc misreads braces inside raw strings and drops test cases.
+static const char *sampleVdf =
+    "\"UserLocalConfigStore\"\n"
+    "{\n"
+    "\t\"Software\" { \"Valve\" { \"Steam\" { \"apps\" {\n"
+    "\t\t\"252950\"\n"
+    "\t\t{\n"
+    "\t\t\t\"LastPlayed\"\t\t\"1795498573\"\n"
+    "\t\t\t\"cloud\"\n"
+    "\t\t\t{\n"
+    "\t\t\t\t\"LaunchOptions\"\t\t\"nested, not this\"\n"
+    "\t\t\t}\n"
+    "\t\t\t\"LaunchOptions\"\t\t\"DXVK_FRAME_RATE=237 gamemoderun mangohud %command% -say \\\"hi\\\"\"\n"
+    "\t\t}\n"
+    "\t\t\"2529500\" { \"LaunchOptions\" \"wrong game\" }\n"
+    "\t} } } }\n"
+    "}";
+
 class DeadzoneTests : public QObject {
     Q_OBJECT
 
@@ -540,6 +558,21 @@ private slots:
         QFile green(dir.filePath("input9:green/brightness"));
         QVERIFY(green.open(QIODevice::ReadOnly));
         QCOMPARE(green.readAll().toInt(), 255);
+    }
+
+    void readsLaunchOptions()
+    {
+        const QString vdf = QString::fromUtf8(sampleVdf);
+        QCOMPARE(Backend::readLaunchOptions(vdf), QString(R"(DXVK_FRAME_RATE=237 gamemoderun mangohud %command% -say "hi")"));
+        QCOMPARE(Backend::readLaunchOptions("nothing here"), QString());
+    }
+
+    void suggestsTheLaunchLine()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        // No controllers in tests, so the DualShock 4 is assumed.
+        QCOMPARE(backend.suggestedLaunch(), QString("SDL_GAMECONTROLLER_IGNORE_DEVICES=0x054c/0x09cc %command%"));
     }
 
     void profileRoundTripsAndClamps()

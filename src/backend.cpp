@@ -97,6 +97,8 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent, 
         m_background = QProcess::execute("systemctl", {"--user", "--quiet", "is-enabled", "deadzone"}) == 0;
         if (m_overlayEnabled)
             m_overlay.start(m_overlayPort);
+        refreshLaunchOptions();
+        connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::refreshLaunchOptions);
         m_watcher.addPath("/dev/input");
         m_poll.start();
         m_fallbackScan.start();
@@ -133,6 +135,7 @@ void Backend::load()
     m_overlayPort = std::clamp(root.value("overlayPort").toInt(7337), 1024, 65535);
     m_comboSwitch = root.value("comboSwitch").toBool(true);
     m_rumble = std::clamp(root.value("rumble").toDouble(1.0), 0.0, 1.0);
+    m_steamInputOff = root.value("steamInputOff").toBool(false);
     const QJsonObject game = root.value("rocketLeague").toObject();
     for (auto it = m_game.begin(); it != m_game.end(); ++it)
         it.value() = game.value(it.key()).toDouble(it.value());
@@ -165,7 +168,7 @@ void Backend::save()
     QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active},
                            {"lightbar", m_lightbar.toJson()}, {"onlyWhileGame", m_onlyWhileGame},
                      {"overlay", m_overlayEnabled}, {"overlayPort", m_overlayPort}, {"comboSwitch", m_comboSwitch},
-                     {"rumble", m_rumble}};
+                     {"rumble", m_rumble}, {"steamInputOff", m_steamInputOff}};
     QJsonObject game;
     for (auto it = m_game.cbegin(); it != m_game.cend(); ++it)
         game.insert(it.key(), it.value());
@@ -379,6 +382,86 @@ double Backend::responseAt(const QString &side, double magnitude, const QString 
     const StickSettings &s = side == "right" ? profile().right : profile().left;
     const QPointF out = axis == "y" ? Curves::stick({0, magnitude}, s) : Curves::stick({magnitude, 0}, s);
     return axis == "y" ? std::abs(out.y()) : std::abs(out.x());
+}
+
+// Steam keeps each game's launch options in localconfig.vdf:
+//   "252950" { ... "LaunchOptions" "DXVK_FRAME_RATE=237 %command%" ... }
+// The block that carries LaunchOptions is the one inside "apps".
+QString Backend::readLaunchOptions(const QString &vdf, const QString &app)
+{
+    static const QRegularExpression key(R"re("LaunchOptions"\s+"((?:[^"\\]|\\.)*)")re");
+    const QString marker = "\"" + app + "\"";
+    for (qsizetype at = vdf.indexOf(marker); at >= 0; at = vdf.indexOf(marker, at + 1)) {
+        const qsizetype open = vdf.indexOf('{', at);
+        if (open < 0 || vdf.mid(at + marker.size(), open - at - marker.size()).trimmed().size() > 0)
+            continue;
+        int depth = 0;
+        qsizetype close = open;
+        for (; close < vdf.size(); ++close) {
+            if (vdf.at(close) == '{') ++depth;
+            else if (vdf.at(close) == '}' && --depth == 0) break;
+        }
+        // Only this block's own keys, not ones nested deeper.
+        QString block = vdf.mid(open + 1, close - open - 1);
+        static const QRegularExpression nested(R"(\{[^{}]*\})");
+        while (block.contains(nested))
+            block.remove(nested);
+        const auto match = key.match(block);
+        if (match.hasMatch())
+            return match.captured(1).replace("\\\"", "\"").replace("\\\\", "\\");
+    }
+    return {};
+}
+
+void Backend::refreshLaunchOptions()
+{
+    QString options;
+    const QString base = QDir::homePath() + "/.local/share/Steam/userdata";
+    for (const QString &user : QDir(base).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        QFile file(base + "/" + user + "/config/localconfig.vdf");
+        if (file.open(QIODevice::ReadOnly)) {
+            options = readLaunchOptions(QString::fromUtf8(file.readAll()));
+            if (!options.isEmpty())
+                break;
+        }
+    }
+    if (options != m_launchOptions) {
+        m_launchOptions = options;
+        emit setupChanged();
+    }
+}
+
+// The controllers Rocket League should not see directly, as SDL wants them:
+// 0x054c/0x09cc, comma separated.
+QString Backend::ignoreList() const
+{
+    QStringList ids;
+    for (const GamepadInfo &info : m_devices)
+        ids.append(QString("0x%1/0x%2").arg(info.vendor, 4, 16, QChar('0')).arg(info.product, 4, 16, QChar('0')));
+    if (ids.isEmpty())
+        ids.append("0x054c/0x09cc");
+    ids.removeDuplicates();
+    return ids.join(',');
+}
+
+QString Backend::suggestedLaunch() const
+{
+    static const QRegularExpression old(R"(SDL_GAMECONTROLLER_IGNORE_DEVICES=\S*\s*)");
+    QString rest = m_launchOptions;
+    rest.remove(old);
+    rest = rest.trimmed();
+    if (!rest.contains("%command%"))
+        rest = rest.isEmpty() ? "%command%" : rest + " %command%";
+    return "SDL_GAMECONTROLLER_IGNORE_DEVICES=" + ignoreList() + " " + rest;
+}
+
+void Backend::setSteamInputOff(bool off)
+{
+    if (off == m_steamInputOff)
+        return;
+    m_steamInputOff = off;
+    save();
+    emit setupChanged();
 }
 
 QString Backend::controllerId() const
@@ -1013,6 +1096,7 @@ void Backend::rescan()
             m_selected = 0;
         emit controllersChanged();
         emit errorChanged();
+        emit setupChanged();
         QStringList lightbars;
         for (const GamepadInfo &info : std::as_const(m_devices))
             if (!info.lightbar.isEmpty())
