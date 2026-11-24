@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Deadzone
+Name[es]=Deadzone
+Comment=Stick deadzones and response curves for your controller
+Comment[es]=Zonas muertas y curvas de respuesta para tu mando
+Exec=deadzone open
+Icon=deadzone
+Terminal=false
+Categories=Game;Utility;
+Keywords=controller;gamepad;joystick;deadzone;ds4;dualshock;
+StartupWMClass=deadzone

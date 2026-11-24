@@ -1,0 +1,10 @@
+[Unit]
+Description=Deadzone controller remapping
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/deadzone run
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
