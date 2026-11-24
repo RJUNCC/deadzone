@@ -11,6 +11,8 @@ Rectangle {
     property bool raw: false
     property bool profileName: false
     property bool xbox: false
+    property bool trail: true
+    property bool history: false
     property real scale: 1.0
 
     readonly property string url: {
@@ -19,12 +21,14 @@ Rectangle {
         if (raw) params.push("raw=1")
         if (profileName) params.push("profile=1")
         if (xbox) params.push("buttons=xbox")
+        if (trail) params.push("trail=1")
+        if (history) params.push("history=1")
         if (Math.abs(scale - 1) > 0.01) params.push("scale=" + scale.toFixed(2))
         params.push("accent=" + String(theme.accent).replace("#", ""))
         return backend.overlayUrl + "?" + params.join("&")
     }
     readonly property int pageWidth: Math.round((compact ? 440 : 600) * scale)
-    readonly property int pageHeight: Math.round((compact ? 270 : 390) * scale)
+    readonly property int pageHeight: Math.round(((compact ? 270 : 390) + (history ? 100 : 0)) * scale)
 
     color: "#17171a"
     radius: theme.radius
@@ -151,6 +155,18 @@ Rectangle {
                     spacing: 4
                     CheckBox { checked: root.raw; focusPolicy: Qt.NoFocus; onToggled: root.raw = checked }
                     Label { text: qsTr("Show the physical stick too"); color: "#c9c9cf"; font.pixelSize: 13 }
+                }
+                RowLayout {
+                    spacing: 4
+                    CheckBox { checked: root.trail; focusPolicy: Qt.NoFocus; onToggled: root.trail = checked }
+                    Label { text: qsTr("Stick trail"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    InfoIcon { text: qsTr("A fading line behind each stick showing the last half second, so flicks and wavedash inputs are easy to follow.") }
+                }
+                RowLayout {
+                    spacing: 4
+                    CheckBox { checked: root.history; focusPolicy: Qt.NoFocus; onToggled: root.history = checked }
+                    Label { text: qsTr("Button history"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    InfoIcon { text: qsTr("A strip underneath showing the last three seconds of jump, boost, powerslide, and trigger presses, so the timing of flips and resets is visible.") }
                 }
                 RowLayout {
                     spacing: 4

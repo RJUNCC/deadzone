@@ -111,6 +111,19 @@ bool History::addTrainer(const QString &controller, const QString &mode, double 
     return best;
 }
 
+void History::setDrain(const QString &controller, double percentPerHour)
+{
+    QJsonObject pad = m_data.value(controller).toObject();
+    pad.insert("drain", percentPerHour);
+    m_data.insert(controller, pad);
+    save();
+}
+
+double History::drain(const QString &controller) const
+{
+    return m_data.value(controller).toObject().value("drain").toDouble(0);
+}
+
 QVariantList History::trainer(const QString &controller, const QString &mode) const
 {
     return m_data.value(controller).toObject().value("trainer").toObject().value(mode).toArray().toVariantList();

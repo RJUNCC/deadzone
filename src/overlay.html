@@ -12,12 +12,17 @@
     buttons=ps|xbox       face button labels
     profile=1             show the profile name underneath
     scale=1.5             size
+    trail=1               a fading trail behind each stick
+    history=1             a strip of the last three seconds of button presses underneath
     demo=1                move on its own, for placing it in OBS without a controller
 -->
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
   body { font-family: system-ui, sans-serif; }
-  svg { display: block; transform-origin: top left; }
+  #stage { position: relative; transform-origin: top left; }
+  svg { display: block; }
+  #trail { position: absolute; left: 0; top: 0; pointer-events: none; }
+  #history { display: block; }
   .body { fill: rgba(18, 18, 22, 0.78); stroke: rgba(255, 255, 255, 0.16); stroke-width: 2; }
   .idle { fill: rgba(255, 255, 255, 0.10); stroke: rgba(255, 255, 255, 0.28); stroke-width: 1.5; }
   .well { fill: rgba(0, 0, 0, 0.35); stroke: rgba(255, 255, 255, 0.22); stroke-width: 1.5; }
@@ -36,6 +41,7 @@
 </style>
 </head>
 <body>
+<div id="stage">
 <svg id="pad" width="600" height="390" viewBox="0 0 600 390">
   <g class="full-only">
     <path class="body" d="M150 70 H450 C520 70 560 110 575 180 L595 300 C602 345 570 372 540 362 C510 352 490 312 460 292 H140 C110 312 90 352 60 362 C30 372 -2 345 5 300 L25 180 C40 110 80 70 150 70 Z"/>
@@ -68,6 +74,9 @@
   <circle id="rdot" class="dot" cx="400" cy="215" r="15"/>
   <text id="profile" class="profile" x="300" y="384" visibility="hidden"></text>
 </svg>
+<canvas id="trail"></canvas>
+<canvas id="history"></canvas>
+</div>
 <script>
   const params = new URLSearchParams(location.search);
   const accent = "#" + (params.get("accent") || "ffd60a").replace(/[^0-9a-fA-F]/g, "").slice(0, 6);
@@ -84,7 +93,23 @@
     svg.setAttribute("width", 440);
     svg.setAttribute("height", 270);
   }
-  svg.style.transform = `scale(${scale})`;
+  const showTrail = params.get("trail") === "1";
+  const showHistory = params.get("history") === "1";
+  const stage = document.getElementById("stage");
+  stage.style.transform = `scale(${scale})`;
+  const originX = compact ? 80 : 0;
+  const pageWidth = compact ? 440 : 600, padHeight = compact ? 270 : 390;
+  const trailCanvas = document.getElementById("trail");
+  const historyCanvas = document.getElementById("history");
+  const ratio = Math.max(1, window.devicePixelRatio * scale);
+  function sizeCanvas(c, w, h) {
+    c.width = w * ratio; c.height = h * ratio;
+    c.style.width = w + "px"; c.style.height = h + "px";
+    c.getContext("2d").setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  sizeCanvas(trailCanvas, pageWidth, padHeight);
+  sizeCanvas(historyCanvas, pageWidth, showHistory ? 100 : 0);
+  historyCanvas.style.display = showHistory ? "block" : "none";
   for (const id of ["lraw", "rraw"]) document.getElementById(id).setAttribute("visibility", showRaw ? "visible" : "hidden");
   document.getElementById("profile").setAttribute("visibility", showProfile ? "visible" : "hidden");
 
@@ -120,10 +145,75 @@
     dot.setAttribute("cy", cy + y * travel);
   }
   let latest = null;
+  // The last three seconds, sampled every frame, for the trail and history.
+  const samples = [];
+  // Long enough to show a flick, short enough not to clutter.
+  const trailMs = 500;
+  function drawTrail(now) {
+    const ctx = trailCanvas.getContext("2d");
+    ctx.clearRect(0, 0, pageWidth, padHeight);
+    if (!showTrail) return;
+    for (const [cx, kx, ky] of [[200, "lx", "ly"], [400, "rx", "ry"]]) {
+      const recent = samples.filter(p => now - p.t < trailMs);
+      for (let i = 1; i < recent.length; ++i) {
+        const a = recent[i - 1], b = recent[i];
+        ctx.strokeStyle = accent;
+        ctx.globalAlpha = 0.85 * (1 - (now - b.t) / trailMs);
+        ctx.lineWidth = 6;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(cx - originX + a.s[kx] * travel, 215 + a.s[ky] * travel);
+        ctx.lineTo(cx - originX + b.s[kx] * travel, 215 + b.s[ky] * travel);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // Lanes for the buttons that matter in Rocket League, newest on the right.
+  const lanes = xbox ? [["A", 0], ["B", 1], ["X", 2], ["Y", 3], ["LB", 4], ["RB", 5], ["LT", -1], ["RT", -2]]
+                     : [["✕", 0], ["○", 1], ["□", 2], ["△", 3], ["L1", 4], ["R1", 5], ["L2", -1], ["R2", -2]];
+  const pressed = (s, bit) => bit === -1 ? s.l2 > 0.5 : bit === -2 ? s.r2 > 0.5 : (s.b >> bit & 1) === 1;
+  function drawHistory(now) {
+    if (!showHistory) return;
+    const ctx = historyCanvas.getContext("2d");
+    const w = pageWidth, h = 100, left = 34, span = 3000;
+    const laneH = (h - 8) / lanes.length;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(18, 18, 22, 0.78)";
+    ctx.beginPath(); ctx.roundRect(0, 0, w, h, 10); ctx.fill();
+    ctx.font = "bold 10px system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    lanes.forEach(([label, bit], lane) => {
+      const y = 4 + lane * laneH;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+      ctx.fillText(label, left / 2, y + laneH / 2);
+      ctx.fillStyle = accent;
+      let start = null;
+      for (let i = 0; i <= samples.length; ++i) {
+        const p = samples[i];
+        const on = p && pressed(p.s, bit);
+        if (on && start === null) start = p.t;
+        if (!on && start !== null) {
+          const end = p ? p.t : now;
+          const x0 = left + (1 - (now - start) / span) * (w - left - 6);
+          const x1 = left + (1 - (now - end) / span) * (w - left - 6);
+          ctx.fillRect(Math.max(left, x0), y + 2, Math.max(2, x1 - Math.max(left, x0)), laneH - 4);
+          start = null;
+        }
+      }
+    });
+  }
+  let current = null;
   function draw() {
     requestAnimationFrame(draw);
-    if (!latest) return;
-    const s = latest;
+    const now = performance.now();
+    if (latest) { current = latest; latest = null; }
+    if (current) samples.push({ t: now, s: current });
+    while (samples.length && now - samples[0].t > 3000) samples.shift();
+    drawTrail(now);
+    drawHistory(now);
+    if (!current) return;
+    const s = current;
     place(el("ldot"), 200, 215, s.lx, s.ly);
     place(el("rdot"), 400, 215, s.rx, s.ry);
     place(el("lraw"), 200, 215, s.lrx, s.lry);
@@ -139,19 +229,21 @@
     el("r3").classList.toggle("pressed", (s.b >> 10 & 1) === 1);
     el("profile").textContent = s.p || "";
     svg.classList.toggle("waiting", !s.c);
-    latest = null;
   }
   requestAnimationFrame(draw);
 
   if (params.get("demo") === "1") {
     // Sticks circling, triggers breathing, and buttons taking turns.
-    setInterval(() => {
-      const t = Date.now() / 1000;
-      const b = 1 << (Math.floor(t * 2) % 15);
-      latest = { lx: Math.cos(t * 1.7), ly: Math.sin(t * 1.7), rx: 0.6 * Math.sin(t), ry: 0.6 * Math.cos(t * 1.3),
-                 lrx: 0.9 * Math.cos(t * 1.7), lry: 0.9 * Math.sin(t * 1.7), rrx: 0.55 * Math.sin(t), rry: 0.55 * Math.cos(t * 1.3),
-                 l2: (Math.sin(t * 2) + 1) / 2, r2: (Math.cos(t * 1.5) + 1) / 2, b, p: "Demo", c: true };
-    }, 16);
+    const demo = t => ({ lx: Math.cos(t * 1.7), ly: Math.sin(t * 1.7), rx: 0.6 * Math.sin(t), ry: 0.6 * Math.cos(t * 1.3),
+                         lrx: 0.9 * Math.cos(t * 1.7), lry: 0.9 * Math.sin(t * 1.7), rrx: 0.55 * Math.sin(t), rry: 0.55 * Math.cos(t * 1.3),
+                         l2: (Math.sin(t * 2) + 1) / 2, r2: (Math.cos(t * 1.5) + 1) / 2,
+                         b: 1 << (Math.floor(t * 2) % 15), p: "Demo", c: true });
+    // The last three seconds are filled in at once, so the trail and the
+    // history look complete as soon as the preview opens.
+    const start = performance.now();
+    for (let ago = 3000; ago > 0; ago -= 16)
+      samples.push({ t: start - ago, s: demo((Date.now() - ago) / 1000) });
+    setInterval(() => { latest = demo(Date.now() / 1000); }, 16);
   } else {
     // EventSource reconnects on its own if deadzone restarts.
     const events = new EventSource("/events");

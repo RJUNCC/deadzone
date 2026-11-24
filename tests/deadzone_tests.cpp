@@ -37,6 +37,15 @@ static const char *sampleVdf =
     "\t} } } }\n"
     "}";
 
+static const char *sampleVdfNoOptions =
+    "\"apps\"\n"
+    "{\n"
+    "\t\"252950\"\n"
+    "\t{\n"
+    "\t\t\"LastPlayed\"\t\t\"1795498573\"\n"
+    "\t}\n"
+    "}\n";
+
 class DeadzoneTests : public QObject {
     Q_OBJECT
 
@@ -573,6 +582,53 @@ private slots:
         Backend backend(dir.filePath("config.json"), false);
         // No controllers in tests, so the DualShock 4 is assumed.
         QCOMPARE(backend.suggestedLaunch(), QString("SDL_GAMECONTROLLER_IGNORE_DEVICES=0x054c/0x09cc %command%"));
+    }
+
+    void writesLaunchOptions()
+    {
+        // Replacing: only the value changes, the rest of the file stays byte for byte.
+        const QString vdf = QString::fromUtf8(sampleVdf);
+        const QString updated = Backend::withLaunchOptions(vdf, R"(SDL_X=1 say "hi" %command%)");
+        QCOMPARE(Backend::readLaunchOptions(updated), QString(R"(SDL_X=1 say "hi" %command%)"));
+        QVERIFY(updated.contains("nested, not this"));
+        QVERIFY(updated.contains("wrong game"));
+        QCOMPARE(updated.size() - vdf.size(), QString(R"(SDL_X=1 say \"hi\" %command%)").size()
+                 - QString(R"(DXVK_FRAME_RATE=237 gamemoderun mangohud %command% -say \"hi\")").size());
+        // Adding where there were none.
+        const QString added = Backend::withLaunchOptions(QString::fromUtf8(sampleVdfNoOptions), "%command%");
+        QCOMPARE(Backend::readLaunchOptions(added), QString("%command%"));
+        QVERIFY(added.contains("LastPlayed"));
+        QVERIFY(Backend::withLaunchOptions("no game here", "x").isEmpty());
+    }
+
+    void describesFlips()
+    {
+        // Up on the stick is forward; up and to the left is forward-left.
+        QVariantMap f = Backend::describeFlip(120, -0.7, -0.7, 0.5);
+        QCOMPARE(f.value("direction").toString(), QString("forward-left"));
+        QVERIFY(f.value("directional").toBool());
+        QVERIFY(f.value("diagonal").toBool());
+        QVERIFY(f.value("offDiagonal").toDouble() < 0.5);
+        f = Backend::describeFlip(80, 0.0, 0.3, 0.5);
+        QCOMPARE(f.value("direction").toString(), QString("back"));
+        QVERIFY(!f.value("directional").toBool());
+        QVERIFY(Backend::describeFlip(80, 0.52, 0, 0.5).value("nearThreshold").toBool());
+    }
+
+    void flipStatsAddUp()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.addFlip(100, 0, -1);        // forward
+        backend.addFlip(200, -0.7, -0.6);   // forward-left, a bit off
+        backend.addFlip(150, 0, -0.1);      // double jump
+        const QVariantMap stats = backend.flipStats();
+        QCOMPARE(stats.value("count").toInt(), 3);
+        QCOMPARE(stats.value("averageGap").toDouble(), 150.0);
+        QCOMPARE(stats.value("directional").toInt(), 2);
+        QCOMPARE(stats.value("diagonals").toInt(), 1);
+        QVERIFY(stats.value("offDiagonal").toDouble() > 3);
+        QCOMPARE(backend.flips().first().toMap().value("gap").toDouble(), 150.0);
     }
 
     void profileRoundTripsAndClamps()

@@ -229,6 +229,7 @@ void Remapper::readSource()
         const int count = int(bytes / sizeof(input_event));
         for (int i = 0; i < count; ++i) {
             const input_event &ev = events[i];
+            m_lastEventTime = ev.time.tv_sec + ev.time.tv_usec / 1e6;
             if (ev.type == EV_SYN) {
                 if (ev.code == SYN_DROPPED) {
                     m_dropped = true;
@@ -295,6 +296,23 @@ void Remapper::handleKey(int code, int value)
                                       {BTN_MODE, PS}, {BTN_THUMBL, L3}, {BTN_THUMBR, R3}};
     if (value != 2)
         setButton(bits.value(code), value != 0);
+
+    // Rocket League allows a second jump for a while after the first; a
+    // press inside that window is a flip or a double jump.
+    if (value == 1 && bits.value(code, -1) == m_jumpBit) {
+        const double now = m_lastEventTime;
+        if (m_firstJump >= 0 && now - m_firstJump < 1.5) {
+            QPointF out;
+            {
+                QMutexLocker lock(&m_mutex);
+                out = m_live.leftOut;
+            }
+            emit flip((now - m_firstJump) * 1000.0, out.x(), out.y());
+            m_firstJump = -1;
+        } else {
+            m_firstJump = now;
+        }
+    }
 
     // PS is held back until it is clear whether it starts a combo: released
     // without one, it reaches the game as a quick press.

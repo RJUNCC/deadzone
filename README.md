@@ -48,6 +48,8 @@ Options go after the `?` in the address; the window builds it for you:
 | `buttons=xbox` | A, B, X, Y instead of the PlayStation shapes. |
 | `accent=a855f7` | Color for pressed buttons and the stick dots. |
 | `scale=1.5` | Size. |
+| `trail=1` | A fading trail behind each stick for the last half second. |
+| `history=1` | A strip of the last three seconds of button and trigger presses underneath (adds 100 to the height). |
 | `demo=1` | Moves on its own, for placing it in OBS without a controller. |
 
 ## On the controller
@@ -57,7 +59,7 @@ Options go after the `?` in the address; the window builds it for you:
   overlay show its name. A PS press on its own still reaches the game.
 - **Lightbar** modes: off, one color, rainbow, battery level, or the current
   profile's color. A red flash and a desktop notification warn at 15%
-  battery.
+  battery, and the window estimates the time left from how fast it drains.
 - **Rumble** strength, from off to full.
 - The window shows the connection and the **report rate** the controller
   actually delivers while moving.
@@ -69,6 +71,12 @@ Options go after the `?` in the address; the window builds it for you:
   Control, small targets to land on and hold. It times each target, counts
   overshoots, names your slowest direction, and keeps your results. It reads
   what the game receives, so it tests your settings as well as your hands.
+- **Flip analyzer**: every two jump presses within a second and a half are
+  timed to the millisecond from the controller's own timestamps, with where
+  the left stick was: front, back, side, or diagonal flip, or a double jump
+  inside your Dodge Deadzone. It shows how far off the diagonal each diagonal
+  flip was, how full each axis got, and points out flips that sit right on
+  the dodge threshold. The jump button can be changed.
 - **Controller health**: every session check and Measure drift adds a point
   to a per-controller chart of stick drift, with a line telling you when a
   stick's drift is rising.
@@ -95,8 +103,11 @@ your stick.
 
 ## Shortcuts
 
+The window has four tabs: Tune, Rocket League, Practice, and Controller.
+
 | Key | Action |
 | --- | --- |
+| 1 – 4 | Switch tabs |
 | Space | Turn remapping on or off |
 | P | Switch to the next profile |
 | D | Show the next controller |
@@ -133,7 +144,8 @@ walks through the fix and ticks off each step:
 3. **Launch options**: prefix them with
    `SDL_GAMECONTROLLER_IGNORE_DEVICES=0x054c/0x09cc`, so the game ignores the
    real controller. The window reads your current options and builds the
-   line to paste.
+   line to paste, or writes it into Steam's settings itself while Steam is
+   closed (keeping a backup of the file).
 4. **Keep running without the window** and **Remap only while Rocket League
    runs**, because after step 3 the game only sees Deadzone's pad.
 

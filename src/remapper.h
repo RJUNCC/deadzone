@@ -45,6 +45,8 @@ public:
     // Holding PS and pressing left or right on the d-pad steps through
     // profiles instead of reaching the game.
     void setComboEnabled(bool enabled) { m_comboEnabled = enabled; }
+    // Which LiveButton is jump, for spotting flips.
+    void setJumpButton(int bit) { m_jumpBit = bit; }
     // 0 silences rumble from games; 1 passes it through unchanged.
     void setRumble(double strength) { m_rumble = strength; }
 
@@ -54,6 +56,10 @@ public slots:
 
 signals:
     void profileStep(int step);
+    // A second jump press soon after a first: a flip or a double jump.
+    // gap is the time between the two presses; x and y are the left stick
+    // as the game received it at the second press.
+    void flip(double gapMs, double x, double y);
     void started(bool active);
     void failed(const QString &message);
     void disconnected();
@@ -93,6 +99,9 @@ private:
 
     std::atomic<bool> m_comboEnabled{true};
     std::atomic<double> m_rumble{1.0};
+    std::atomic<int> m_jumpBit{0};
+    double m_firstJump = -1;
+    double m_lastEventTime = 0;
     bool m_modeHeld = false, m_comboUsed = false;
     quint32 m_buttons = 0;
     std::vector<double> m_reports;   // Recent report times, for the rate.

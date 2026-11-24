@@ -22,6 +22,10 @@ public:
     bool addTrainer(const QString &controller, const QString &mode, double milliseconds, int misses, qint64 when = 0);
     QVariantList trainer(const QString &controller, const QString &mode) const;
 
+    // How fast the battery drained last time, in percent an hour; 0 if unknown.
+    void setDrain(const QString &controller, double percentPerHour);
+    double drain(const QString &controller) const;
+
     static QString defaultPath();
 
 private:

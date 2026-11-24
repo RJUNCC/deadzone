@@ -71,6 +71,11 @@ class Backend : public QObject {
     Q_PROPERTY(QString suggestedLaunch READ suggestedLaunch NOTIFY setupChanged)
     Q_PROPERTY(bool launchReady READ launchReady NOTIFY setupChanged)
     Q_PROPERTY(bool steamInputOff READ steamInputOff WRITE setSteamInputOff NOTIFY setupChanged)
+    Q_PROPERTY(int jumpButton READ jumpButton WRITE setJumpButton NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantList flips READ flips NOTIFY flipsChanged)
+    Q_PROPERTY(QVariantMap flipStats READ flipStats NOTIFY flipsChanged)
+    Q_PROPERTY(int batteryMinutes READ batteryMinutes NOTIFY batteryChanged)
+    Q_PROPERTY(bool steamRunning READ steamRunning NOTIFY setupChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY sessionChanged)
     Q_PROPERTY(int sessionElapsed READ sessionElapsed NOTIFY sessionChanged)
     Q_PROPERTY(int sessionDuration READ sessionDuration NOTIFY sessionChanged)
@@ -156,6 +161,17 @@ public:
     void setSteamInputOff(bool off);
     // Rocket League's launch options from Steam's localconfig.vdf text.
     static QString readLaunchOptions(const QString &vdf, const QString &app = "252950");
+    int jumpButton() const { return m_jumpButton; }
+    void setJumpButton(int bit);
+    QVariantList flips() const { return m_flips; }
+    QVariantMap flipStats() const;
+    int batteryMinutes() const;
+    bool steamRunning() const { return m_steamRunning; }
+    // The vdf text with Rocket League's launch options set, or empty when
+    // the game's block is not there.
+    static QString withLaunchOptions(const QString &vdf, const QString &options, const QString &app = "252950");
+    // A flip as the analyzer sees it, for the list and the stats.
+    static QVariantMap describeFlip(double gapMs, double x, double y, double dodge);
     bool recording() const { return m_recording; }
     int sessionElapsed() const { return m_recording ? int(m_sessionClock.elapsed() / 1000) : m_sessionSeconds; }
     int sessionDuration() const { return m_sessionDuration; }
@@ -234,6 +250,14 @@ public:
     Q_INVOKABLE bool saveTrainerResult(const QString &mode, double milliseconds, int misses);
     Q_INVOKABLE QVariantList trainerHistory(const QString &mode) const;
 
+    // Writes the suggested launch options into Steam's config. Steam must
+    // be closed, or it would write its own copy back over the change.
+    // Returns an empty string on success, or what went wrong.
+    Q_INVOKABLE QString applyLaunchOptions();
+    Q_INVOKABLE void clearFlips();
+    // For tests: as if the remapper had seen a flip.
+    void addFlip(double gapMs, double x, double y) { onFlip(gapMs, x, y); }
+
     Q_INVOKABLE void selectProfile(int index);
     Q_INVOKABLE void newProfile(const QString &preset);
     Q_INVOKABLE void duplicateProfile();
@@ -287,6 +311,7 @@ signals:
     void switched();
     void historyChanged();
     void setupChanged();
+    void flipsChanged();
 
 private:
     struct Worker {
@@ -321,6 +346,7 @@ private:
     QString controllerId() const;
     QString ignoreList() const;
     void refreshLaunchOptions();
+    void onFlip(double gapMs, double x, double y);
     void checkHolders();
     QString uniqueName(const QString &base) const;
 
@@ -367,6 +393,11 @@ private:
     double m_rumble = 1.0;
     QString m_launchOptions;
     bool m_steamInputOff = false;
+    bool m_steamRunning = false;
+    int m_jumpButton = 0;
+    QVariantList m_flips;
+    QList<QPair<qint64, int>> m_drops;   // When the battery reached each lower percentage.
+    double m_drain = 0;
     QString m_switchedTo;
     QTimer m_switchedClear;
     Session m_session;

@@ -176,6 +176,33 @@ Rectangle {
                     Timer { id: copyTimer; interval: 1500; onTriggered: copyLaunch.copied = false }
                 }
             }
+            RowLayout {
+                visible: !backend.launchReady
+                Layout.fillWidth: true
+                spacing: 8
+                Button {
+                    id: applyLaunch
+                    text: qsTr("Apply it for me")
+                    flat: true
+                    enabled: !backend.steamRunning
+                    focusPolicy: Qt.NoFocus
+                    Material.roundedScale: theme.radius
+                    onClicked: applyResult.text = backend.applyLaunchOptions()
+                }
+                Label {
+                    id: applyResult
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: text.length > 0 ? "#ffb4b4" : "#8b8b93"
+                    font.pixelSize: 12
+                    text: ""
+                    Binding on text {
+                        when: backend.steamRunning
+                        value: qsTr("Deadzone can write this into Steam's settings itself, but only while Steam is closed: Steam menu, Exit. A backup of the file is kept.")
+                        restoreMode: Binding.RestoreNone
+                    }
+                }
+            }
             Label {
                 visible: !backend.launchReady && backend.launchOptions.length > 0
                 Layout.fillWidth: true

@@ -58,7 +58,11 @@ Rectangle {
             Label {
                 visible: backend.battery >= 0
                 text: backend.charging ? qsTr("Battery %1%, charging").arg(backend.battery)
-                                       : qsTr("Battery %1%").arg(backend.battery)
+                      : backend.batteryMinutes > 0
+                        ? qsTr("Battery %1%, about %2 left").arg(backend.battery).arg(
+                              backend.batteryMinutes >= 60 ? qsTr("%1 h %2 min").arg(Math.floor(backend.batteryMinutes / 60)).arg(backend.batteryMinutes % 60)
+                                                           : qsTr("%1 min").arg(backend.batteryMinutes))
+                        : qsTr("Battery %1%").arg(backend.battery)
                 color: backend.battery >= 0 && backend.battery <= 20 && !backend.charging ? "#f87171" : "#c9c9cf"
                 font.pixelSize: 13
             }

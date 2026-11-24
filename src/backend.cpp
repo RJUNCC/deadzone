@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QColor>
+#include <QDateTime>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -136,6 +137,7 @@ void Backend::load()
     m_comboSwitch = root.value("comboSwitch").toBool(true);
     m_rumble = std::clamp(root.value("rumble").toDouble(1.0), 0.0, 1.0);
     m_steamInputOff = root.value("steamInputOff").toBool(false);
+    m_jumpButton = std::clamp(root.value("jumpButton").toInt(0), 0, 14);
     const QJsonObject game = root.value("rocketLeague").toObject();
     for (auto it = m_game.begin(); it != m_game.end(); ++it)
         it.value() = game.value(it.key()).toDouble(it.value());
@@ -168,7 +170,8 @@ void Backend::save()
     QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active},
                            {"lightbar", m_lightbar.toJson()}, {"onlyWhileGame", m_onlyWhileGame},
                      {"overlay", m_overlayEnabled}, {"overlayPort", m_overlayPort}, {"comboSwitch", m_comboSwitch},
-                     {"rumble", m_rumble}, {"steamInputOff", m_steamInputOff}};
+                     {"rumble", m_rumble}, {"steamInputOff", m_steamInputOff},
+                     {"jumpButton", m_jumpButton}};
     QJsonObject game;
     for (auto it = m_game.cbegin(); it != m_game.cend(); ++it)
         game.insert(it.key(), it.value());
@@ -425,8 +428,20 @@ void Backend::refreshLaunchOptions()
                 break;
         }
     }
-    if (options != m_launchOptions) {
+    // Steam's client process is named steam.
+    bool steam = false;
+    for (const QString &pid : QDir("/proc").entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (!pid.front().isDigit())
+            continue;
+        QFile comm("/proc/" + pid + "/comm");
+        if (comm.open(QIODevice::ReadOnly) && comm.readAll().trimmed() == "steam") {
+            steam = true;
+            break;
+        }
+    }
+    if (options != m_launchOptions || steam != m_steamRunning) {
         m_launchOptions = options;
+        m_steamRunning = steam;
         emit setupChanged();
     }
 }
@@ -462,6 +477,161 @@ void Backend::setSteamInputOff(bool off)
     m_steamInputOff = off;
     save();
     emit setupChanged();
+}
+
+int Backend::batteryMinutes() const
+{
+    if (m_battery < 0 || m_charging)
+        return -1;
+    // This session's rate once known, else the last one remembered.
+    const double drain = m_drain > 0 ? m_drain : m_history.drain(controllerId());
+    return drain > 0 ? int(m_battery / drain * 60) : -1;
+}
+
+void Backend::setJumpButton(int bit)
+{
+    bit = std::clamp(bit, 0, 14);
+    if (bit == m_jumpButton)
+        return;
+    m_jumpButton = bit;
+    for (const Worker &worker : std::as_const(m_workers))
+        worker.remapper->setJumpButton(bit);
+    save();
+    emit settingsChanged();
+}
+
+QVariantMap Backend::describeFlip(double gapMs, double x, double y, double dodge)
+{
+    const double tilt = std::min(1.0, std::hypot(x, y));
+    // Up on the stick is forward in Rocket League; angles run clockwise from forward.
+    double angle = std::atan2(x, -y) * 180 / M_PI;
+    if (angle < 0)
+        angle += 360;
+    const int sector = int(std::lround(angle / 45.0)) % 8;
+    static const char *names[] = {"forward", "forward-right", "right", "back-right", "back", "back-left", "left", "forward-left"};
+    const double offDiagonal = std::abs(std::fmod(angle, 90.0) - 45.0);
+    const bool diagonal = sector % 2 == 1;
+    return {{"gap", gapMs}, {"x", x}, {"y", y}, {"tilt", tilt}, {"angle", angle},
+            {"direction", QString::fromLatin1(names[sector])}, {"directional", tilt >= dodge},
+            {"nearThreshold", std::abs(tilt - dodge) < 0.08}, {"diagonal", diagonal},
+            {"offDiagonal", diagonal ? offDiagonal : 0.0},
+            {"axes", diagonal ? std::min(std::abs(x), std::abs(y)) : 0.0},
+            {"t", QDateTime::currentMSecsSinceEpoch()}};
+}
+
+void Backend::onFlip(double gapMs, double x, double y)
+{
+    m_flips.prepend(describeFlip(gapMs, x, y, m_game.value("dodge", 0.5)));
+    while (m_flips.size() > 40)
+        m_flips.removeLast();
+    emit flipsChanged();
+}
+
+void Backend::clearFlips()
+{
+    m_flips.clear();
+    emit flipsChanged();
+}
+
+QVariantMap Backend::flipStats() const
+{
+    int directional = 0, near = 0, diagonals = 0;
+    double gap = 0, off = 0, axes = 0;
+    for (const QVariant &item : m_flips) {
+        const QVariantMap f = item.toMap();
+        gap += f.value("gap").toDouble();
+        directional += f.value("directional").toBool();
+        near += f.value("nearThreshold").toBool();
+        if (f.value("directional").toBool() && f.value("diagonal").toBool()) {
+            ++diagonals;
+            off += f.value("offDiagonal").toDouble();
+            axes += f.value("axes").toDouble();
+        }
+    }
+    const int n = m_flips.size();
+    return {{"count", n}, {"averageGap", n ? gap / n : 0.0}, {"directional", directional}, {"near", near},
+            {"diagonals", diagonals}, {"offDiagonal", diagonals ? off / diagonals : 0.0},
+            {"axes", diagonals ? axes / diagonals : 0.0}};
+}
+
+QString Backend::withLaunchOptions(const QString &vdf, const QString &options, const QString &app)
+{
+    const QString marker = "\"" + app + "\"";
+    for (qsizetype at = vdf.indexOf(marker); at >= 0; at = vdf.indexOf(marker, at + 1)) {
+        const qsizetype open = vdf.indexOf('{', at);
+        if (open < 0 || vdf.mid(at + marker.size(), open - at - marker.size()).trimmed().size() > 0)
+            continue;
+        // Walk the block at its own depth, looking for its LaunchOptions line.
+        int depth = 0;
+        qsizetype close = open;
+        qsizetype line = -1;
+        for (qsizetype i = open; i < vdf.size(); ++i) {
+            const QChar c = vdf.at(i);
+            if (c == '"') {
+                const qsizetype end = vdf.indexOf('"', i + 1);
+                if (depth == 1 && vdf.mid(i, end - i + 1) == "\"LaunchOptions\"")
+                    line = i;
+                // Skip the string, minding escaped quotes.
+                qsizetype j = i + 1;
+                while (j < vdf.size() && (vdf.at(j) != '"' || vdf.at(j - 1) == '\\'))
+                    ++j;
+                i = j;
+                continue;
+            }
+            if (c == '{') ++depth;
+            else if (c == '}' && --depth == 0) { close = i; break; }
+        }
+        QString escaped = options;
+        escaped.replace("\\", "\\\\").replace("\"", "\\\"");
+        if (line >= 0) {
+            // Replace the value: the second quoted string on that line.
+            const qsizetype keyEnd = vdf.indexOf('"', line + 1);
+            const qsizetype valueStart = vdf.indexOf('"', keyEnd + 1);
+            qsizetype valueEnd = valueStart + 1;
+            while (valueEnd < vdf.size() && (vdf.at(valueEnd) != '"' || vdf.at(valueEnd - 1) == '\\'))
+                ++valueEnd;
+            return vdf.left(valueStart + 1) + escaped + vdf.mid(valueEnd);
+        }
+        // No launch options yet: add a line just inside the block, indented
+        // like the block's other keys.
+        const qsizetype lineStart = vdf.lastIndexOf('\n', at) + 1;
+        const QString indent = vdf.mid(lineStart, at - lineStart) + "\t";
+        Q_UNUSED(close);
+        return vdf.left(open + 1) + "\n" + indent + "\"LaunchOptions\"\t\t\"" + escaped + "\"" + vdf.mid(open + 1);
+    }
+    return {};
+}
+
+QString Backend::applyLaunchOptions()
+{
+    refreshLaunchOptions();
+    if (m_steamRunning)
+        return tr("Close Steam first (Steam menu, Exit). While it runs, Steam writes its own copy of the settings back over any change.");
+    const QString wanted = suggestedLaunch();
+    const QString base = QDir::homePath() + "/.local/share/Steam/userdata";
+    int changed = 0;
+    for (const QString &user : QDir(base).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const QString path = base + "/" + user + "/config/localconfig.vdf";
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        const QString text = QString::fromUtf8(file.readAll());
+        file.close();
+        const QString updated = withLaunchOptions(text, wanted);
+        if (updated.isEmpty() || updated == text)
+            continue;
+        // A copy of Steam's file as it was, in case anything looks wrong.
+        QFile::remove(path + ".deadzone-backup");
+        QFile::copy(path, path + ".deadzone-backup");
+        QSaveFile out(path);
+        if (!out.open(QIODevice::WriteOnly) || out.write(updated.toUtf8()) < 0 || !out.commit())
+            return tr("Could not write %1.").arg(path);
+        ++changed;
+    }
+    refreshLaunchOptions();
+    if (changed == 0 && !launchReady())
+        return tr("Rocket League was not found in Steam's settings. Has it been launched from this Steam account?");
+    return {};
 }
 
 QString Backend::controllerId() const
@@ -1129,6 +1299,21 @@ void Backend::updateBattery()
     } else if (charging || percent > 25) {
         m_lowBatteryWarned = false;
     }
+    // Time left comes from how fast the charge falls while unplugged. A
+    // DualShock 4 reports in steps, so each step down is timed.
+    if (charging || percent < 0) {
+        m_drops.clear();
+    } else if (m_drops.isEmpty() || percent < m_drops.last().second) {
+        m_drops.append({QDateTime::currentSecsSinceEpoch(), percent});
+        if (m_drops.size() >= 2) {
+            const double hours = (m_drops.last().first - m_drops.first().first) / 3600.0;
+            const int fell = m_drops.first().second - m_drops.last().second;
+            if (hours > 0.05 && fell >= 5) {
+                m_drain = fell / hours;
+                m_history.setDrain(controllerId(), m_drain);
+            }
+        }
+    }
     if (percent != m_battery || charging != m_charging) {
         m_battery = percent;
         m_charging = charging;
@@ -1145,8 +1330,10 @@ void Backend::startWorker(const GamepadInfo &info)
     worker.remapper = new Remapper(info.path, info.driver, remapping(), profile());
     worker.remapper->setComboEnabled(m_comboSwitch);
     worker.remapper->setRumble(m_rumble);
+    worker.remapper->setJumpButton(m_jumpButton);
     worker.remapper->moveToThread(worker.thread);
     connect(worker.remapper, &Remapper::profileStep, this, &Backend::stepProfile);
+    connect(worker.remapper, &Remapper::flip, this, &Backend::onFlip);
     connect(worker.thread, &QThread::started, worker.remapper, &Remapper::start);
 
     const QString id = info.id;
