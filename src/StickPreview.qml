@@ -1,8 +1,8 @@
 import QtQuick
 
-// The stick's travel as a circle: the deadzone shaded in the middle, the
-// outer edge as a ring, the raw position as a grey dot, and what games
-// receive as the accent dot.
+// The stick's travel as a circle: the deadzone shaded in the middle in its
+// shape, the outer edge as a ring, the raw position as a grey dot, and what
+// games receive as the accent dot.
 Item {
     id: root
 
@@ -10,11 +10,12 @@ Item {
     property point out: Qt.point(0, 0)
     property real inner: 0
     property real outer: 1
-    property bool radial: true
+    property int shape: 0       // 0 circle, 1 square, 2 cross.
+    property real square: 0
     property color accent: "#FFD60A"
 
-    implicitWidth: 220
-    implicitHeight: 220
+    implicitWidth: 190
+    implicitHeight: 190
 
     readonly property real size: Math.min(width, height)
     readonly property real cx: width / 2
@@ -29,6 +30,26 @@ Item {
             const ctx = getContext("2d")
             const r = root.size / 2
             ctx.reset()
+
+            // Where the output dot can go: the circle stretched toward a
+            // square as Square output rises.
+            if (root.square > 0) {
+                ctx.strokeStyle = Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
+                ctx.setLineDash([3, 3])
+                ctx.lineWidth = 1
+                ctx.beginPath()
+                for (let i = 0; i <= 72; ++i) {
+                    const a = i / 72 * Math.PI * 2
+                    const c = Math.cos(a), s = Math.sin(a)
+                    const reach = 1 + (1 / Math.max(Math.abs(c), Math.abs(s)) - 1) * root.square
+                    const px = root.cx + Math.max(-1, Math.min(1, c * reach)) * r
+                    const py = root.cy + Math.max(-1, Math.min(1, s * reach)) * r
+                    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
+                }
+                ctx.stroke()
+                ctx.setLineDash([])
+            }
+
             ctx.save()
             ctx.beginPath()
             ctx.arc(root.cx, root.cy, r - 1, 0, Math.PI * 2)
@@ -58,10 +79,12 @@ Item {
 
             ctx.fillStyle = "#34343c"
             const d = r * root.inner
-            if (root.radial) {
+            if (root.shape === 0) {
                 ctx.beginPath()
                 ctx.arc(root.cx, root.cy, d, 0, Math.PI * 2)
                 ctx.fill()
+            } else if (root.shape === 1) {
+                ctx.fillRect(root.cx - d, root.cy - d, 2 * d, 2 * d)
             } else {
                 ctx.fillRect(root.cx - r, root.cy - d, 2 * r, 2 * d)
                 ctx.fillRect(root.cx - d, root.cy - r, 2 * d, 2 * r)
@@ -84,7 +107,8 @@ Item {
 
     onInnerChanged: zones.requestPaint()
     onOuterChanged: zones.requestPaint()
-    onRadialChanged: zones.requestPaint()
+    onShapeChanged: zones.requestPaint()
+    onSquareChanged: zones.requestPaint()
     onAccentChanged: zones.requestPaint()
     onWidthChanged: zones.requestPaint()
     onHeightChanged: zones.requestPaint()

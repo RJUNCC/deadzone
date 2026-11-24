@@ -5,7 +5,7 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: win
-    width: 1000
+    width: 1040
     height: 1000
     minimumWidth: 760
     minimumHeight: 640
@@ -18,22 +18,30 @@ ApplicationWindow {
     Material.roundedScale: theme.radius
 
     property bool helpVisible: false
+    property bool showDescriptions: true
+    // Single-key shortcuts stay out of the way while a text field has focus.
+    readonly property bool typing: activeFocusItem !== null && activeFocusItem.hasOwnProperty("cursorPosition")
 
-    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
-    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.active = !backend.active }
-    Shortcut { sequence: "D"; context: Qt.ApplicationShortcut; onActivated: backend.selectNext() }
-    Shortcut { sequence: "H"; context: Qt.ApplicationShortcut; onActivated: backend.hideFromGames = !backend.hideFromGames }
-    Shortcut { sequence: "R"; context: Qt.ApplicationShortcut; onActivated: backend.resetProfile() }
-    Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
-    Shortcut { sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
+    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible || backend.calibrating.length > 0; onActivated: { win.helpVisible = false; backend.cancelCalibration() } }
+    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: Qt.quit() }
+    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.active = !backend.active }
+    Shortcut { sequence: "D"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.selectNext() }
+    Shortcut { sequence: "P"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.selectProfile((backend.profileIndex + 1) % backend.profileNames.length) }
+    Shortcut { sequence: "I"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.showDescriptions = !win.showDescriptions }
+    Shortcut { sequence: "H"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.hideFromGames = !backend.hideFromGames }
+    Shortcut { sequence: "R"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.resetProfile() }
+    Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.undo() }
+    Shortcut { sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.redo() }
 
     readonly property var shortcuts: [
         ["Space", qsTr("Turn remapping on or off")],
+        ["P", qsTr("Switch to the next profile")],
         ["D", qsTr("Show the next controller")],
+        ["I", qsTr("Show or hide descriptions")],
         ["H", qsTr("Hide the real controller from games")],
-        ["R", qsTr("Reset all settings")],
+        ["R", qsTr("Reset the profile to its preset")],
+        ["Esc", qsTr("Stop measuring")],
         ["Ctrl+Z", qsTr("Undo")],
         ["Ctrl+Shift+Z", qsTr("Redo")],
         ["?", qsTr("Show shortcuts")],
@@ -115,7 +123,7 @@ ApplicationWindow {
                 }
 
                 Rectangle {
-                    visible: backend.exposed && !backend.hideFromGames
+                    visible: backend.exposed
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
@@ -132,7 +140,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
                             color: "#e4e4e7"
-                            text: qsTr("Steam and some games read this controller directly, skip your deadzones, and may see two controllers. Hiding it from games stops that; it asks for your password.")
+                            text: qsTr("Steam and Proton can read this controller directly, skip your settings, and see two controllers: Start on the second one joins split screen. Hiding it from games stops that; it asks for your password once.")
                         }
                         Button {
                             text: qsTr("Hide from games")
@@ -143,9 +151,40 @@ ApplicationWindow {
                                 radius: Math.min(4, theme.radius)
                                 color: parent.down ? Qt.darker(theme.accent, 1.2) : theme.accent
                             }
+                            enabled: !backend.hideBusy
                             onClicked: backend.hideFromGames = true
                         }
                     }
+                }
+
+                Rectangle {
+                    visible: backend.notice.length > 0 || (backend.calibrating.length === 0 && backend.calibrationMessage.length > 0)
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    implicitHeight: noticeRow.implicitHeight + 20
+                    radius: theme.radius
+                    color: "#17171a"
+                    border.color: "#2a2a30"
+                    RowLayout {
+                        id: noticeRow
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: "#e4e4e7"
+                            text: backend.notice.length > 0 ? backend.notice : backend.calibrationMessage
+                        }
+                    }
+                }
+
+                ProfileBar {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    onRenameRequested: { renameField.text = backend.profileNames[backend.profileIndex]; renameDialog.open() }
                 }
 
                 // Nothing to shape yet: say what to do.
@@ -175,6 +214,7 @@ ApplicationWindow {
                     spacing: 16
 
                     StickCard {
+                        Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
                         side: "left"
@@ -183,6 +223,7 @@ ApplicationWindow {
                         out: backend.leftOut
                     }
                     StickCard {
+                        Layout.alignment: Qt.AlignTop
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
                         side: "right"
@@ -249,13 +290,22 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     key: modelData.key + ".inner"
                                     label: qsTr("Deadzone")
+                                    description: qsTr("How far you press before games see anything, so a resting finger never counts.")
                                     to: 0.5
                                 }
                                 SettingSlider {
                                     Layout.fillWidth: true
                                     key: modelData.key + ".outer"
                                     label: qsTr("Outer edge")
+                                    description: qsTr("Where games see a full press. Lower means full throttle sooner.")
                                     from: 0.5
+                                }
+                                SettingSlider {
+                                    Layout.fillWidth: true
+                                    key: modelData.key + ".anti"
+                                    label: qsTr("Anti-deadzone")
+                                    description: qsTr("Where the output starts once pressed. Cancels a game's own trigger deadzone; Rocket League has 10%.")
+                                    to: 0.5
                                 }
                             }
                         }
@@ -271,16 +321,17 @@ ApplicationWindow {
                     Switch {
                         id: hideSwitch
                         checked: backend.hideFromGames
+                        enabled: !backend.hideBusy
                         focusPolicy: Qt.NoFocus
-                        onToggled: backend.hideFromGames = checked
+                        onToggled: { backend.hideFromGames = checked; checked = Qt.binding(() => backend.hideFromGames) }
                     }
                     Label {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         color: "#8b8b93"
                         font.pixelSize: 13
-                        text: backend.hiding ? qsTr("Hidden from games: only the virtual pad is visible to them.")
-                                             : qsTr("Hide the real controller from games while remapping")
+                        text: backend.hideFromGames ? qsTr("Hidden from games: they only see the virtual pad. Turn this off to give Steam its own access back.")
+                                                    : qsTr("Hide the real controller from games, so they only see the virtual pad")
                     }
                     Label {
                         text: qsTr("Press ? for shortcuts")
@@ -288,6 +339,23 @@ ApplicationWindow {
                         font.pixelSize: 13
                     }
                 }
+            }
+        }
+
+        Dialog {
+            id: renameDialog
+            anchors.centerIn: parent
+            modal: true
+            title: qsTr("Rename profile")
+            standardButtons: Dialog.Ok | Dialog.Cancel
+            Material.roundedScale: theme.radius
+            onAccepted: backend.renameProfile(renameField.text)
+            onOpened: renameField.forceActiveFocus()
+            TextField {
+                id: renameField
+                width: 300
+                Material.roundedScale: theme.radius
+                onAccepted: renameDialog.accept()
             }
         }
 

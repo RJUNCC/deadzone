@@ -2,8 +2,8 @@
 Type=Application
 Name=Deadzone
 Name[es]=Deadzone
-Comment=Stick deadzones and response curves for your controller
-Comment[es]=Zonas muertas y curvas de respuesta para tu mando
+Comment=Stick deadzones, response curves, and game profiles for your controller
+Comment[es]=Zonas muertas, curvas de respuesta y perfiles de juego para tu mando
 Exec=deadzone open
 Icon=deadzone
 Terminal=false

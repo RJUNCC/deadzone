@@ -65,7 +65,7 @@ private slots:
     {
         StickSettings s;
         s.inner = 0.2;
-        s.radial = false;
+        s.shape = StickSettings::Cross;
         // Straight up with a little drift sideways: the drift is dropped.
         const QPointF out = Curves::stick({0.1, -0.8}, s);
         QCOMPARE(out.x(), 0.0);
@@ -82,11 +82,136 @@ private slots:
         QCOMPARE(Curves::trigger(0.95, t), 1.0);
     }
 
+    void squareDeadzoneReachesFurtherOnDiagonals()
+    {
+        StickSettings s;
+        s.shape = StickSettings::Square;
+        s.inner = 0.1;
+        // 0.12 straight right is out; the same length on a diagonal is inside the square.
+        QVERIFY(Curves::stick({0.12, 0}, s).x() > 0);
+        QCOMPARE(Curves::stick({0.0849, 0.0849}, s), QPointF(0, 0));
+        // Leaving the square edge starts from zero rather than jumping.
+        const QPointF edge = Curves::stick({0.1001, 0.1001}, s);
+        QVERIFY(std::hypot(edge.x(), edge.y()) < 0.01);
+    }
+
+    void squareOutputFillsTheDiagonal()
+    {
+        StickSettings s;
+        s.inner = 0;
+        s.outer = 1;
+        s.square = 1;
+        const double d = std::sqrt(0.5);
+        const QPointF out = Curves::stick({d, -d}, s);
+        QVERIFY(qAbs(out.x() - 1.0) < 1e-6 && qAbs(out.y() + 1.0) < 1e-6);
+        // Straight pushes are untouched.
+        QVERIFY(qAbs(Curves::stick({0.5, 0}, s).x() - 0.5) < 1e-9);
+        s.square = 0;
+        QVERIFY(qAbs(Curves::stick({d, -d}, s).x() - d) < 1e-9);
+    }
+
+    void customCurveFollowsThePoints()
+    {
+        StickSettings s;
+        s.custom = true;
+        s.points = {{0, 0}, {0.5, 0.2}, {1, 1}};
+        QVERIFY(qAbs(Curves::response(0.25, s) - 0.1) < 1e-9);
+        QVERIFY(qAbs(Curves::response(0.75, s) - 0.6) < 1e-9);
+        QCOMPARE(Curves::response(1.0, s), 1.0);
+    }
+
+    void triggerAntiDeadzone()
+    {
+        TriggerSettings t{0.02, 0.85, 0.10};
+        QCOMPARE(Curves::trigger(0.01, t), 0.0);
+        QVERIFY(Curves::trigger(0.03, t) >= 0.10);
+        QCOMPARE(Curves::trigger(0.9, t), 1.0);
+    }
+
+    void oldConfigBecomesTwoProfiles()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("config.json"), R"({"profile": {"left": {"mode": "axial", "inner": 0.2}}, "active": false})");
+        Backend backend(dir.filePath("config.json"), false);
+        QCOMPARE(backend.profileNames(), QStringList({"Default", "Rocket League"}));
+        QCOMPARE(backend.profile().left.shape, StickSettings::Cross);
+        QCOMPARE(backend.profile().left.inner, 0.2);
+        QCOMPARE(backend.profiles().at(1).match, QString("RocketLeague.exe"));
+        QCOMPARE(backend.active(), false);
+    }
+
+    void profilesAreUndoable()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        QCOMPARE(backend.profileNames().size(), 2);
+        backend.newProfile("rocketleague");
+        QCOMPARE(backend.profileNames().last(), QString("Rocket League 2"));
+        // A second copy never fights the first over the same game.
+        QVERIFY(backend.profile().match.isEmpty());
+        backend.renameProfile("Ranked");
+        QCOMPARE(backend.profileNames().last(), QString("Ranked"));
+        backend.deleteProfile();
+        QCOMPARE(backend.profileNames().size(), 2);
+        backend.undo();
+        QCOMPARE(backend.profileNames().last(), QString("Ranked"));
+        backend.undo();
+        backend.undo();
+        QCOMPARE(backend.profileNames().size(), 2);
+    }
+
+    void resetGoesBackToThePreset()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.selectProfile(1);
+        backend.change("l2.anti", 0.4);
+        backend.resetProfile();
+        QCOMPARE(backend.setting("l2.anti"), 0.10);
+        QCOMPARE(backend.profile().name, QString("Rocket League"));
+    }
+
+    void curvePointsStayInOrder()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.beginEdit();
+        backend.setCurvePoint("left", 2, 0.9, 0.4);    // Past its right neighbour at 0.75.
+        backend.setCurvePoint("left", 0, 0.3, 0.1);    // The first point stays at x 0.
+        backend.endEdit();
+        const auto &points = backend.profile().left.points;
+        QVERIFY(points[2].x() < points[3].x());
+        QCOMPARE(points[0], QPointF(0.0, 0.1));
+        QCOMPARE(points[2].y(), 0.4);
+    }
+
+    void findsRunningGames()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("123");
+        QDir(dir.path()).mkpath("self");
+        write(dir.filePath("123/cmdline"), QByteArray("S:\\steamapps\\common\\rocketleague\\Binaries\\Win64\\RocketLeague.exe\0-nomovie\0", 70));
+        QCOMPARE(Backend::runningMatch({"", "rocketleague.exe"}, dir.path()), 1);
+        QCOMPARE(Backend::runningMatch({"Celeste.exe"}, dir.path()), -1);
+        QCOMPARE(Backend::runningMatch({""}, dir.path()), -1);
+    }
+
+    void udevRuleRoundTrips()
+    {
+        const QString text = Backend::ruleText({"054c:09cc", "054C:0CE6"});
+        QVERIFY(text.contains(R"(KERNELS=="*054C:09CC*", TAG-="uaccess")"));
+        QCOMPARE(Backend::ruleIds(text), QStringList({"054C:09CC", "054C:0CE6"}));
+    }
+
     void profileRoundTripsAndClamps()
     {
         Profile p;
         p.left.inner = 0.12;
-        p.right.radial = false;
+        p.right.shape = StickSettings::Square;
+        p.left.custom = true;
+        p.left.points[2] = {0.5, 0.3};
+        p.name = "Rocket League";
+        p.match = "RocketLeague.exe";
         p.r2.outer = 0.8;
         QCOMPARE(Profile::fromJson(p.toJson()), p);
 
@@ -101,8 +226,10 @@ private slots:
         Profile p;
         QVERIFY(p.setValue("right.curve", 2.0));
         QCOMPARE(p.value("right.curve"), 2.0);
-        QVERIFY(p.setValue("left.radial", 0));
-        QCOMPARE(p.left.radial, false);
+        QVERIFY(p.setValue("left.shape", 2));
+        QCOMPARE(p.left.shape, StickSettings::Cross);
+        QVERIFY(p.setValue("left.shape", 9));
+        QCOMPARE(p.left.shape, StickSettings::Cross);
         QVERIFY(!p.setValue("left.bogus", 1));
         QVERIFY(!p.setValue("nothing", 1));
     }
@@ -153,7 +280,7 @@ private slots:
         Backend backend(dir.filePath("config.json"), false);
         backend.change("l2.inner", 0.3);
         backend.resetProfile();
-        QCOMPARE(backend.profile(), Profile());
+        QCOMPARE(backend.profile(), Presets::make("default"));
         backend.undo();
         QCOMPARE(backend.setting("l2.inner"), 0.3);
     }

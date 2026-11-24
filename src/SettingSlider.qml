@@ -3,13 +3,14 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// One profile value. A drag is a single undo step; arrow keys on a focused
-// slider are one step each.
+// One profile value with what it does underneath. A drag is a single undo
+// step; arrow keys on a focused slider are one step each.
 ColumnLayout {
     id: root
 
     property string key
     property string label
+    property string description
     property real from: 0
     property real to: 1
     property real stepSize: 0.01
@@ -32,6 +33,16 @@ ColumnLayout {
             font.pixelSize: 13
             font.features: { "tnum": 1 }
         }
+    }
+
+    Label {
+        visible: root.description.length > 0 && ApplicationWindow.window.showDescriptions
+        Layout.fillWidth: true
+        Layout.topMargin: 2
+        text: root.description
+        wrapMode: Text.Wrap
+        color: "#76767e"
+        font.pixelSize: 12
     }
 
     Slider {

@@ -5,6 +5,9 @@
         <file alias="StickPreview.qml">StickPreview.qml</file>
         <file alias="SettingSlider.qml">SettingSlider.qml</file>
         <file alias="TriggerMeter.qml">TriggerMeter.qml</file>
+        <file alias="Segmented.qml">Segmented.qml</file>
+        <file alias="CurveEditor.qml">CurveEditor.qml</file>
+        <file alias="ProfileBar.qml">ProfileBar.qml</file>
         <file alias="i18n/es.json">i18n/es.json</file>
     </qresource>
 </RCC>
