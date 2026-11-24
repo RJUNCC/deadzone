@@ -20,13 +20,14 @@
 #include <unistd.h>
 
 #include "backend.h"
+#include "clipboard.h"
 #include "gamepads.h"
 #include "theme.h"
 #include "translator.h"
 
 namespace {
 
-const char *version = "0.5.0";
+const char *version = "0.6.0";
 
 void usage(FILE *out)
 {
@@ -161,6 +162,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("backend", &backend);
+    Clipboard clipboard;
+    engine.rootContext()->setContextProperty("clipboard", &clipboard);
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;

@@ -6,6 +6,7 @@
 #include <QPointF>
 #include <QSocketNotifier>
 #include <QString>
+#include <atomic>
 #include <vector>
 
 #include "curves.h"
@@ -16,6 +17,14 @@
 struct LiveState {
     QPointF leftRaw, leftOut, rightRaw, rightOut;
     double l2Raw = 0, l2Out = 0, r2Raw = 0, r2Out = 0;
+    quint32 buttons = 0;   // One bit per LiveButton.
+    double rate = 0;       // Reports a second, measured while the controller is moving.
+};
+
+// Bits in LiveState::buttons, named for a PlayStation pad (cross is Xbox A).
+enum LiveButton {
+    Cross = 0, Circle, Square, Triangle, L1, R1, Share, Options, PS, L3, R3,
+    DpadUp, DpadDown, DpadLeft, DpadRight
 };
 
 // Owns one physical controller. While active it grabs the controller so
@@ -30,15 +39,21 @@ public:
     Remapper(const QString &path, const QString &driver, bool active, const Profile &profile);
     ~Remapper() override;
 
-    // Both are safe to call from any thread.
+    // All are safe to call from any thread.
     void setProfile(const Profile &profile);
     LiveState live() const;
+    // Holding PS and pressing left or right on the d-pad steps through
+    // profiles instead of reaching the game.
+    void setComboEnabled(bool enabled) { m_comboEnabled = enabled; }
+    // 0 silences rumble from games; 1 passes it through unchanged.
+    void setRumble(double strength) { m_rumble = strength; }
 
 public slots:
     void start();
     void stop();
 
 signals:
+    void profileStep(int step);
     void started(bool active);
     void failed(const QString &message);
     void disconnected();
@@ -53,6 +68,10 @@ private:
     double normalize(int axis, int value) const;
     void flush();
     void emitEvent(int type, int code, int value);
+    void handleKey(int code, int value);
+    void handleHat(int code, int value);
+    void setButton(int bit, bool down);
+    void noteReport(const timeval &time);
     void uploadEffect(int requestId);
     void eraseEffect(int requestId);
 
@@ -71,6 +90,13 @@ private:
     int m_sent[AxisCount] = {};
     std::vector<input_event> m_pending;
     QHash<int, int> m_effects;   // Virtual effect id to the id on the real controller.
+
+    std::atomic<bool> m_comboEnabled{true};
+    std::atomic<double> m_rumble{1.0};
+    bool m_modeHeld = false, m_comboUsed = false;
+    quint32 m_buttons = 0;
+    std::vector<double> m_reports;   // Recent report times, for the rate.
+    double m_rate = 0;
 
     mutable QMutex m_mutex;
     Profile m_profile;

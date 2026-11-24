@@ -27,6 +27,20 @@ Lightbar::Lightbar(QObject *parent) : QObject(parent)
     m_tick.setInterval(40);
     connect(&m_tick, &QTimer::timeout, this, &Lightbar::apply);
     m_clock.start();
+    m_flash.setInterval(180);
+    connect(&m_flash, &QTimer::timeout, this, [this] {
+        if (--m_flashSteps <= 0) {
+            m_flash.stop();
+            m_written.clear();
+            if (m_mode == Off)
+                restore();
+            else
+                apply();
+            return;
+        }
+        m_written.clear();
+        write(m_flashSteps % 2 ? QColor(Qt::black) : m_flashColor);
+    });
 }
 
 QString Lightbar::channel(const QString &target, const QString &name)
@@ -38,7 +52,7 @@ QString Lightbar::channel(const QString &target, const QString &name)
 
 void Lightbar::setMode(int mode)
 {
-    mode = std::clamp(mode, 0, 3);
+    mode = std::clamp(mode, 0, 4);
     if (mode == m_mode)
         return;
     m_mode = mode;
@@ -110,6 +124,26 @@ void Lightbar::setBattery(int percent)
         apply();
 }
 
+void Lightbar::setProfileColor(const QColor &color)
+{
+    if (!color.isValid() || color == m_profileColor)
+        return;
+    m_profileColor = color;
+    if (m_mode == ProfileColor)
+        apply();
+}
+
+void Lightbar::flash(const QColor &color, int times)
+{
+    if (m_targets.isEmpty())
+        return;
+    m_flashColor = color;
+    m_flashSteps = times * 2;
+    m_written.clear();
+    write(color);
+    m_flash.start();
+}
+
 QColor Lightbar::rainbowAt(double seconds, double speed)
 {
     const double hue = std::fmod(seconds * speed, 1.0);
@@ -125,6 +159,8 @@ QColor Lightbar::batteryColor(int percent)
 
 void Lightbar::apply()
 {
+    if (m_flash.isActive())
+        return;
     if (m_mode == Off) {
         m_tick.stop();
         return;
@@ -136,6 +172,7 @@ void Lightbar::apply()
 
     QColor color = m_mode == Solid ? m_color
                  : m_mode == Rainbow ? rainbowAt(m_clock.elapsed() / 1000.0, m_speed)
+                 : m_mode == ProfileColor ? m_profileColor
                                      : batteryColor(m_battery < 0 ? 100 : m_battery);
     color = QColor::fromRgbF(color.redF() * m_brightness, color.greenF() * m_brightness, color.blueF() * m_brightness);
     write(color);
@@ -189,14 +226,15 @@ QStringList Lightbar::files() const
 
 QJsonObject Lightbar::toJson() const
 {
-    const char *modes[] = {"off", "color", "rainbow", "battery"};
+    const char *modes[] = {"off", "color", "rainbow", "battery", "profile"};
     return {{"mode", modes[m_mode]}, {"color", m_color.name()}, {"speed", m_speed}, {"brightness", m_brightness}};
 }
 
 void Lightbar::load(const QJsonObject &o)
 {
     const QString mode = o.value("mode").toString("off");
-    m_mode = mode == "color" ? Solid : mode == "rainbow" ? Rainbow : mode == "battery" ? Battery : Off;
+    m_mode = mode == "color" ? Solid : mode == "rainbow" ? Rainbow : mode == "battery" ? Battery
+           : mode == "profile" ? ProfileColor : Off;
     const QColor color(o.value("color").toString());
     if (color.isValid())
         m_color = color;

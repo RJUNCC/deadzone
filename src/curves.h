@@ -42,6 +42,7 @@ struct Profile {
     QString name = "Default";
     QString match;          // Switch to this profile while a process with this in its command line runs.
     QString preset;         // Which preset it started from, for its tips.
+    QString color;          // Shown on the lightbar when switched to; empty picks one by position.
     StickSettings left, right;
     TriggerSettings l2, r2;
 
@@ -71,6 +72,13 @@ double shape(double magnitude, double inner, double outer, const StickSettings &
 QPointF stick(QPointF raw, const StickSettings &settings);
 // t runs from 0 to 1.
 double trigger(double raw, const TriggerSettings &settings);
+}
+
+namespace Codes {
+// A profile as a short text code to paste anywhere, and back. Decoding
+// returns false for anything that is not one.
+QString encode(const Profile &profile);
+bool decode(const QString &code, Profile &profile);
 }
 
 namespace Presets {

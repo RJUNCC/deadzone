@@ -1,6 +1,7 @@
 #include "curves.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <algorithm>
 #include <cmath>
 
@@ -247,7 +248,7 @@ TriggerSettings triggerFrom(const QJsonObject &o)
 
 QJsonObject Profile::toJson() const
 {
-    return {{"name", name}, {"match", match}, {"preset", preset},
+    return {{"name", name}, {"match", match}, {"preset", preset}, {"color", color},
             {"left", stickJson(left)}, {"right", stickJson(right)},
             {"l2", triggerJson(l2)}, {"r2", triggerJson(r2)}};
 }
@@ -258,6 +259,7 @@ Profile Profile::fromJson(const QJsonObject &o)
     p.name = o.value("name").toString(p.name);
     p.match = o.value("match").toString();
     p.preset = o.value("preset").toString();
+    p.color = o.value("color").toString();
     p.left = stickFrom(o.value("left").toObject());
     p.right = stickFrom(o.value("right").toObject());
     p.l2 = triggerFrom(o.value("l2").toObject());
@@ -318,6 +320,40 @@ bool Profile::setValue(const QString &key, double v)
         return true;
     }
     return false;
+}
+
+namespace Codes {
+
+QString encode(const Profile &profile)
+{
+    QJsonObject json = profile.toJson();
+    json.remove("match");
+    const QByteArray packed = qCompress(QJsonDocument(json).toJson(QJsonDocument::Compact), 9);
+    return "DZ1-" + QString::fromLatin1(packed.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+
+bool decode(const QString &code, Profile &profile)
+{
+    const QString trimmed = code.trimmed();
+    if (!trimmed.startsWith("DZ1-"))
+        return false;
+    const auto decoded = QByteArray::fromBase64Encoding(trimmed.mid(4).toLatin1(),
+                                                        QByteArray::Base64UrlEncoding | QByteArray::AbortOnBase64DecodingErrors);
+    if (!decoded)
+        return false;
+    // A pasted code is untrusted: it is size-checked, then parsed with the
+    // same clamping as the config file.
+    const QByteArray json = qUncompress(*decoded);
+    if (json.isEmpty() || json.size() > 64 * 1024)
+        return false;
+    const QJsonDocument document = QJsonDocument::fromJson(json);
+    if (!document.isObject() || !document.object().contains("left"))
+        return false;
+    profile = Profile::fromJson(document.object());
+    profile.name = profile.name.left(40);
+    return true;
+}
+
 }
 
 namespace Presets {

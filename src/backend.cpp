@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QColor>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -54,10 +55,19 @@ const char *ruleScript =
 
 }
 
-Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent)
+Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent, const QString &historyPath)
     : QObject(parent), m_configPath(configPath.isEmpty() ? defaultConfigPath() : configPath),
-      m_watchDevices(watchDevices)
+      m_watchDevices(watchDevices),
+      m_history(!historyPath.isEmpty() ? historyPath
+                : configPath.isEmpty() ? QString() : QFileInfo(configPath).absolutePath() + "/history.json")
 {
+    connect(&m_overlay, &OverlayServer::clientsChanged, this, &Backend::overlayChanged);
+    // A newly opened overlay gets the current state straight away, not on
+    // the next stick movement.
+    connect(&m_overlay, &OverlayServer::clientsChanged, this, &Backend::publishOverlay);
+    m_switchedClear.setSingleShot(true);
+    m_switchedClear.setInterval(2500);
+    connect(&m_switchedClear, &QTimer::timeout, this, [this] { m_switchedTo.clear(); emit switched(); });
     load();
     connect(&m_lightbar, &Lightbar::changed, this, &Backend::save);
 
@@ -85,6 +95,8 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent)
         readRule();
         readGameIni();
         m_background = QProcess::execute("systemctl", {"--user", "--quiet", "is-enabled", "deadzone"}) == 0;
+        if (m_overlayEnabled)
+            m_overlay.start(m_overlayPort);
         m_watcher.addPath("/dev/input");
         m_poll.start();
         m_fallbackScan.start();
@@ -117,6 +129,10 @@ void Backend::load()
     m_active = root.value("active").toBool(true);
     m_lightbar.load(root.value("lightbar").toObject());
     m_onlyWhileGame = root.value("onlyWhileGame").toBool(false);
+    m_overlayEnabled = root.value("overlay").toBool(false);
+    m_overlayPort = std::clamp(root.value("overlayPort").toInt(7337), 1024, 65535);
+    m_comboSwitch = root.value("comboSwitch").toBool(true);
+    m_rumble = std::clamp(root.value("rumble").toDouble(1.0), 0.0, 1.0);
     const QJsonObject game = root.value("rocketLeague").toObject();
     for (auto it = m_game.begin(); it != m_game.end(); ++it)
         it.value() = game.value(it.key()).toDouble(it.value());
@@ -147,7 +163,9 @@ void Backend::save()
     for (const Profile &profile : std::as_const(m_profiles))
         profiles.append(profile.toJson());
     QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active},
-                           {"lightbar", m_lightbar.toJson()}, {"onlyWhileGame", m_onlyWhileGame}};
+                           {"lightbar", m_lightbar.toJson()}, {"onlyWhileGame", m_onlyWhileGame},
+                     {"overlay", m_overlayEnabled}, {"overlayPort", m_overlayPort}, {"comboSwitch", m_comboSwitch},
+                     {"rumble", m_rumble}};
     QJsonObject game;
     for (auto it = m_game.cbegin(); it != m_game.cend(); ++it)
         game.insert(it.key(), it.value());
@@ -308,6 +326,7 @@ void Backend::applyProfile()
 {
     for (const Worker &worker : std::as_const(m_workers))
         worker.remapper->setProfile(profile());
+    m_lightbar.setProfileColor(QColor(profileColor()));
     ++m_revision;
     emit profileChanged();
 }
@@ -362,6 +381,139 @@ double Backend::responseAt(const QString &side, double magnitude, const QString 
     return axis == "y" ? std::abs(out.y()) : std::abs(out.x());
 }
 
+QString Backend::controllerId() const
+{
+    return m_selected >= 0 && m_selected < m_devices.size() ? m_devices.at(m_selected).id : QString();
+}
+
+void Backend::setOverlayEnabled(bool enabled)
+{
+    if (enabled == m_overlayEnabled)
+        return;
+    m_overlayEnabled = enabled;
+    if (enabled)
+        m_overlay.start(m_overlayPort);
+    else
+        m_overlay.stop();
+    save();
+    emit overlayChanged();
+}
+
+void Backend::setOverlayPort(int port)
+{
+    port = std::clamp(port, 1024, 65535);
+    if (port == m_overlayPort)
+        return;
+    m_overlayPort = port;
+    if (m_overlayEnabled)
+        m_overlay.start(m_overlayPort);
+    save();
+    emit overlayChanged();
+}
+
+void Backend::publishOverlay()
+{
+    if (!m_overlay.running() || m_overlay.clients() == 0)
+        return;
+    auto r = [](double v) { return std::round(v * 1000) / 1000; };
+    const QJsonObject state{
+        {"lx", r(m_live.leftOut.x())}, {"ly", r(m_live.leftOut.y())}, {"rx", r(m_live.rightOut.x())}, {"ry", r(m_live.rightOut.y())},
+        {"lrx", r(m_live.leftRaw.x())}, {"lry", r(m_live.leftRaw.y())}, {"rrx", r(m_live.rightRaw.x())}, {"rry", r(m_live.rightRaw.y())},
+        {"l2", r(m_live.l2Out)}, {"r2", r(m_live.r2Out)}, {"b", qint64(m_live.buttons)},
+        {"p", profile().name}, {"c", !m_devices.isEmpty()}};
+    m_overlay.publish(QJsonDocument(state).toJson(QJsonDocument::Compact));
+}
+
+void Backend::setComboSwitch(bool enabled)
+{
+    if (enabled == m_comboSwitch)
+        return;
+    m_comboSwitch = enabled;
+    for (const Worker &worker : std::as_const(m_workers))
+        worker.remapper->setComboEnabled(enabled);
+    save();
+    emit settingsChanged();
+}
+
+void Backend::setRumble(double strength)
+{
+    strength = std::clamp(strength, 0.0, 1.0);
+    if (qFuzzyCompare(strength + 1, m_rumble + 1))
+        return;
+    m_rumble = strength;
+    for (const Worker &worker : std::as_const(m_workers))
+        worker.remapper->setRumble(strength);
+    save();
+    emit settingsChanged();
+}
+
+// A palette that stays tellable apart on a lightbar, by profile position.
+QString Backend::profileColor() const
+{
+    static const char *palette[] = {"#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#a855f7", "#06b6d4", "#ec4899", "#ffffff"};
+    return profile().color.isEmpty() ? palette[m_current % 8] : profile().color;
+}
+
+void Backend::setProfileColor(const QString &color)
+{
+    if (!QColor(color).isValid() || color == profile().color)
+        return;
+    pushUndo();
+    editable().color = QColor(color).name();
+    applyProfile();
+    save();
+}
+
+// PS + d-pad left or right: the next or previous profile, said with a flash
+// of its color and a moment of its name in the window and overlay.
+void Backend::stepProfile(int step)
+{
+    if (!remapping() || m_profiles.size() < 2)
+        return;
+    selectProfile((m_current + step + m_profiles.size()) % m_profiles.size());
+    m_lightbar.flash(QColor(profileColor()), 2);
+    m_switchedTo = profile().name;
+    m_switchedClear.start();
+    emit switched();
+}
+
+QString Backend::importProfile(const QString &code)
+{
+    Profile imported;
+    if (!Codes::decode(code, imported))
+        return tr("That is not a deadzone profile code. Codes start with DZ1-.");
+    pushUndo();
+    imported.name = uniqueName(imported.name.isEmpty() ? tr("Imported") : imported.name);
+    imported.match.clear();
+    m_profiles.append(imported);
+    m_manual = m_profiles.size() - 1;
+    setCurrent(m_manual);
+    save();
+    return {};
+}
+
+QVariantList Backend::health() const
+{
+    return m_history.health(controllerId());
+}
+
+QString Backend::healthTrend() const
+{
+    return History::trend(health(), tr("Left stick"), tr("Right stick"));
+}
+
+bool Backend::saveTrainerResult(const QString &mode, double milliseconds, int misses)
+{
+    const bool best = m_history.addTrainer(controllerId().isEmpty() ? "unknown" : controllerId(), mode, milliseconds, misses);
+    emit historyChanged();
+    return best;
+}
+
+QVariantList Backend::trainerHistory(const QString &mode) const
+{
+    return m_history.trainer(controllerId().isEmpty() ? "unknown" : controllerId(), mode);
+}
+
 void Backend::startSession(int minutes)
 {
     m_session = Session();
@@ -380,6 +532,12 @@ void Backend::stopSession()
     m_recording = false;
     m_sessionSeconds = int(m_sessionClock.elapsed() / 1000);
     m_sessionDone = true;
+    const QVariantMap m = m_session.measurements();
+    if (!controllerId().isEmpty() && (m.value("leftDrift").toDouble() >= 0 || m.value("rightDrift").toDouble() >= 0)) {
+        m_history.addHealth(controllerId(), m.value("leftDrift").toDouble(), m.value("rightDrift").toDouble(),
+                            m.value("leftReach").toDouble(), m.value("rightReach").toDouble());
+        emit historyChanged();
+    }
     emit sessionChanged();
 }
 
@@ -790,6 +948,10 @@ void Backend::finishCalibration()
         // A little margin over the worst resting reading, rounded up.
         const double deadzone = std::clamp(std::ceil((m_calibration.peak + 0.02) * 100) / 100, 0.02, 0.5);
         change(side + ".inner", deadzone);
+        if (!controllerId().isEmpty()) {
+            m_history.addHealth(controllerId(), side == "left" ? m_calibration.peak : -1, side == "right" ? m_calibration.peak : -1, -1, -1);
+            emit historyChanged();
+        }
         m_calibration.message = tr("%1 rests within %2%. Deadzone set to %3%.")
                                     .arg(stick).arg(std::round(m_calibration.peak * 100)).arg(std::round(deadzone * 100));
     } else {
@@ -874,6 +1036,15 @@ void Backend::updateBattery()
             charging = status.readAll().trimmed() == "Charging";
     }
     m_lightbar.setBattery(percent);
+    // One warning per discharge, before the controller dies mid-match.
+    if (percent >= 0 && percent <= 15 && !charging && !m_lowBatteryWarned) {
+        m_lowBatteryWarned = true;
+        m_lightbar.flash(QColor("#ef4444"), 3);
+        QProcess::startDetached("notify-send", {"-a", "deadzone", "-u", "critical", tr("Controller battery low"),
+                                                tr("%1% left. Plug it in soon.").arg(percent)});
+    } else if (charging || percent > 25) {
+        m_lowBatteryWarned = false;
+    }
     if (percent != m_battery || charging != m_charging) {
         m_battery = percent;
         m_charging = charging;
@@ -888,7 +1059,10 @@ void Backend::startWorker(const GamepadInfo &info)
     worker.thread = new QThread(this);
     worker.thread->setObjectName("deadzone " + info.path);
     worker.remapper = new Remapper(info.path, info.driver, remapping(), profile());
+    worker.remapper->setComboEnabled(m_comboSwitch);
+    worker.remapper->setRumble(m_rumble);
     worker.remapper->moveToThread(worker.thread);
+    connect(worker.remapper, &Remapper::profileStep, this, &Backend::stepProfile);
     connect(worker.thread, &QThread::started, worker.remapper, &Remapper::start);
 
     const QString id = info.id;
@@ -962,11 +1136,12 @@ void Backend::pollLive()
 
     if (state.leftRaw == m_live.leftRaw && state.rightRaw == m_live.rightRaw && state.l2Raw == m_live.l2Raw
         && state.r2Raw == m_live.r2Raw && state.leftOut == m_live.leftOut && state.rightOut == m_live.rightOut
-        && state.l2Out == m_live.l2Out && state.r2Out == m_live.r2Out)
+        && state.l2Out == m_live.l2Out && state.r2Out == m_live.r2Out && state.buttons == m_live.buttons
+        && state.rate == m_live.rate)
         return;
-    m_live = {state.leftRaw, state.leftOut, state.rightRaw, state.rightOut,
-              state.l2Raw, state.l2Out, state.r2Raw, state.r2Out};
+    m_live = state;
     emit liveChanged();
+    publishOverlay();
 }
 
 // ---- Hiding the real controller from games ----

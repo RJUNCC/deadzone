@@ -19,8 +19,9 @@ ApplicationWindow {
 
     property bool helpVisible: false
     property bool showDescriptions: false
+    property bool trainerVisible: false
     // Single-key shortcuts stay out of the way while a text field has focus.
-    readonly property bool typing: activeFocusItem !== null && activeFocusItem.hasOwnProperty("cursorPosition")
+    readonly property bool typing: (activeFocusItem !== null && activeFocusItem.hasOwnProperty("cursorPosition")) || trainerVisible
 
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible || backend.calibrating.length > 0; onActivated: { win.helpVisible = false; backend.cancelCalibration() } }
@@ -29,6 +30,7 @@ ApplicationWindow {
     Shortcut { sequence: "D"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.selectNext() }
     Shortcut { sequence: "P"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.selectProfile((backend.profileIndex + 1) % backend.profileNames.length) }
     Shortcut { sequence: "I"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.showDescriptions = !win.showDescriptions }
+    Shortcut { sequence: "T"; context: Qt.ApplicationShortcut; enabled: !win.typing && win.hasController; onActivated: win.trainerVisible = true }
     Shortcut { sequence: "L"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.lightbar.mode = (backend.lightbar.mode + 1) % 4 }
     Shortcut { sequence: "H"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.hideFromGames = !backend.hideFromGames }
     Shortcut { sequence: "R"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.resetProfile() }
@@ -42,6 +44,8 @@ ApplicationWindow {
         ["I", qsTr("Show every description under its setting")],
         ["H", qsTr("Hide the real controller from games")],
         ["L", qsTr("Next lightbar mode")],
+        ["T", qsTr("Open the precision trainer")],
+        ["PS + ← →", qsTr("Previous or next profile, from the controller")],
         ["R", qsTr("Reset the profile to its preset")],
         ["Esc", qsTr("Stop measuring")],
         ["Ctrl+Z", qsTr("Undo")],
@@ -161,19 +165,13 @@ ApplicationWindow {
                     Layout.rightMargin: 20
                 }
 
-                SessionCard {
-                    visible: win.hasController
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 20
-                    Layout.rightMargin: 20
-                }
-
                 ProfileBar {
                     visible: win.hasController
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
                     onRenameRequested: { renameField.text = backend.profileNames[backend.profileIndex]; renameDialog.open() }
+                    onImportRequested: { importField.text = clipboard.text().trim().startsWith("DZ1-") ? clipboard.text().trim() : ""; importError.text = ""; importDialog.open() }
                 }
 
                 // Nothing to shape yet: say what to do.
@@ -302,6 +300,73 @@ ApplicationWindow {
                     }
                 }
 
+                SessionCard {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                }
+
+                // The precision trainer opens over the whole window.
+                Rectangle {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                    implicitHeight: trainerRow.implicitHeight + 32
+                    color: "#17171a"
+                    radius: theme.radius
+                    border.color: "#232328"
+                    RowLayout {
+                        id: trainerRow
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        spacing: 10
+                        Label {
+                            text: qsTr("Precision trainer")
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                            color: "#e4e4e7"
+                        }
+                        InfoIcon { text: qsTr("A short drill: flick to targets around the rim, or hold small targets steady, and see how fast and clean you are. It reads what the game receives, so it also tests your settings.") }
+                        Label {
+                            Layout.fillWidth: true
+                            color: "#8b8b93"
+                            font.pixelSize: 13
+                            text: {
+                                backend.health
+                                const best = mode => { const h = backend.trainerHistory(mode); return h.length ? Math.round(Math.min(...h.map(x => x.ms))) + " ms" : "–" }
+                                return qsTr("Best flick %1 · best control %2").arg(best("flick")).arg(best("control"))
+                            }
+                        }
+                        Button {
+                            text: qsTr("Open")
+                            focusPolicy: Qt.NoFocus
+                            Material.foreground: theme.accentForeground
+                            background: Rectangle {
+                                implicitHeight: 36
+                                implicitWidth: 90
+                                radius: Math.min(4, theme.radius)
+                                color: parent.down ? Qt.darker(theme.accent, 1.2) : theme.accent
+                            }
+                            onClicked: win.trainerVisible = true
+                        }
+                    }
+                }
+
+                HealthCard {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                }
+
+                OverlayCard {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                }
+
                 LightbarCard {
                     visible: win.hasController
                     Layout.fillWidth: true
@@ -353,6 +418,72 @@ ApplicationWindow {
                 width: 300
                 Material.roundedScale: theme.radius
                 onAccepted: renameDialog.accept()
+            }
+        }
+
+        Dialog {
+            id: importDialog
+            anchors.centerIn: parent
+            modal: true
+            title: qsTr("Import a profile")
+            standardButtons: Dialog.Ok | Dialog.Cancel
+            Material.roundedScale: theme.radius
+            closePolicy: Popup.CloseOnEscape
+            onOpened: importField.forceActiveFocus()
+            onAccepted: {
+                const problem = backend.importProfile(importField.text)
+                if (problem.length > 0) {
+                    importError.text = problem
+                    open()
+                }
+            }
+            ColumnLayout {
+                spacing: 8
+                width: 420
+                TextField {
+                    id: importField
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Paste a code starting with DZ1-")
+                    Material.roundedScale: theme.radius
+                    onAccepted: importDialog.accept()
+                }
+                Label {
+                    id: importError
+                    visible: text.length > 0
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: "#ffb4b4"
+                }
+            }
+        }
+
+        Trainer {
+            anchors.fill: parent
+            visible: win.trainerVisible
+            onClosed: win.trainerVisible = false
+        }
+
+        // A moment of the new profile's name after switching from the controller.
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 24
+            visible: opacity > 0
+            opacity: backend.switchedTo.length > 0 ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 200 } }
+            width: toastText.implicitWidth + 48
+            height: 48
+            radius: theme.radius
+            color: "#232328"
+            border.color: backend.profileColor
+            border.width: 2
+            Label {
+                id: toastText
+                anchors.centerIn: parent
+                text: backend.switchedTo
+                color: "#e4e4e7"
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
             }
         }
 

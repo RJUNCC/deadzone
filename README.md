@@ -30,6 +30,51 @@ applied. Rumble is passed back to the controller.
 - **Profiles** start from a preset: Standard, Freestyle (finer aerial
   control), or Worn stick (bigger deadzone, lower outer edge).
 
+## OBS overlay
+
+Turn on **OBS overlay** in the window, copy the address, and add it in OBS as
+a Browser Source (Sources, +, Browser). It shows the sticks, triggers, and
+buttons as the game receives them, on a transparent background, and keeps
+working with the window closed when Deadzone runs in the background. It is
+served on this computer only.
+
+Options go after the `?` in the address; the window builds it for you:
+
+| Option | Effect |
+| --- | --- |
+| `layout=compact` | Sticks and triggers only (440 by 270) instead of the whole controller (600 by 390). |
+| `raw=1` | Also show the physical stick as a faint dot. |
+| `profile=1` | Show the profile name underneath. |
+| `buttons=xbox` | A, B, X, Y instead of the PlayStation shapes. |
+| `accent=a855f7` | Color for pressed buttons and the stick dots. |
+| `scale=1.5` | Size. |
+| `demo=1` | Moves on its own, for placing it in OBS without a controller. |
+
+## On the controller
+
+- **PS + d-pad left or right** switches to the previous or next profile, even
+  mid-match. The lightbar flashes the new profile's color and the window and
+  overlay show its name. A PS press on its own still reaches the game.
+- **Lightbar** modes: off, one color, rainbow, battery level, or the current
+  profile's color. A red flash and a desktop notification warn at 15%
+  battery.
+- **Rumble** strength, from off to full.
+- The window shows the connection and the **report rate** the controller
+  actually delivers while moving.
+
+## Practice and health
+
+- **Precision trainer** (`T`): Flick, to targets near the rim in all eight
+  directions from a released stick, like setting up flips and wavedashes; or
+  Control, small targets to land on and hold. It times each target, counts
+  overshoots, names your slowest direction, and keeps your results. It reads
+  what the game receives, so it tests your settings as well as your hands.
+- **Controller health**: every session check and Measure drift adds a point
+  to a per-controller chart of stick drift, with a line telling you when a
+  stick's drift is rising.
+- **Export and Import** turn a profile into a `DZ1-` code you can paste to a
+  friend or keep as a backup.
+
 ## What you can set
 
 Each setting explains itself behind its info icon (`I` shows them all).
@@ -58,6 +103,8 @@ your stick.
 | I | Show every description under its setting |
 | H | Hide the real controller from games |
 | L | Next lightbar mode |
+| T | Open the precision trainer |
+| PS + ← → (on the controller) | Previous or next profile |
 | R | Reset the profile to its preset |
 | Esc | Stop measuring |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |

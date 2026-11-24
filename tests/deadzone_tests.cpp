@@ -11,6 +11,9 @@
 #include "gamepads.h"
 #include "lightbar.h"
 #include "session.h"
+#include "history.h"
+#include "overlay.h"
+#include <QTcpSocket>
 #include <QProcess>
 #include <QStandardPaths>
 #include "theme.h"
@@ -435,6 +438,108 @@ private slots:
         QVERIFY(backend.setting("left.inner") > 0.12);
         backend.undo();
         QCOMPARE(backend.setting("left.inner"), 0.05);
+    }
+
+    void profileCodesRoundTrip()
+    {
+        Profile p = Presets::make("freestyle");
+        p.left.shape = StickSettings::Custom;
+        p.left.radii[3] = 0.4;
+        p.color = "#a855f7";
+        const QString code = Codes::encode(p);
+        QVERIFY(code.startsWith("DZ1-"));
+        Profile back;
+        QVERIFY(Codes::decode(code, back));
+        QCOMPARE(back.left, p.left);
+        QCOMPARE(back.color, p.color);
+        QCOMPARE(back.name, p.name);
+        // Junk, truncation, and other text are refused.
+        QVERIFY(!Codes::decode("hello", back));
+        QVERIFY(!Codes::decode("DZ1-!!!!", back));
+        QVERIFY(!Codes::decode(code.left(code.size() / 2), back));
+    }
+
+    void importAddsAProfile()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        const QString code = backend.exportProfile();
+        QVERIFY(backend.importProfile("nonsense").length() > 0);
+        QCOMPARE(backend.importProfile(code), QString());
+        QCOMPARE(backend.profileNames(), QStringList({"Rocket League", "Rocket League 2"}));
+        backend.undo();
+        QCOMPARE(backend.profileNames().size(), 1);
+    }
+
+    void historyTracksDriftAndBests()
+    {
+        QTemporaryDir dir;
+        {
+            History history(dir.filePath("history.json"));
+            history.addHealth("pad", 0.04, -1, -1, -1, 1700000000);
+            history.addHealth("pad", 0.07, 0.03, 0.95, -1, 1702000000);
+            QVERIFY(history.addTrainer("pad", "flick", 400, 2));
+            QVERIFY(!history.addTrainer("pad", "flick", 450, 0));
+            QVERIFY(history.addTrainer("pad", "flick", 350, 1));
+        }
+        History again(dir.filePath("history.json"));
+        QCOMPARE(again.health("pad").size(), 2);
+        QCOMPARE(again.trainer("pad", "flick").size(), 3);
+        QVERIFY(again.health("other").isEmpty());
+        const QString trend = History::trend(again.health("pad"), "Left", "Right");
+        QVERIFY2(trend.contains("Left drift rose from 4% to 7%"), qPrintable(trend));
+        QVERIFY(!trend.contains("Right"));
+    }
+
+    void sessionMeasures()
+    {
+        Session session;
+        for (int i = 0; i < 400; ++i)
+            session.add({0.05, 0}, {}, 0, 0);
+        const QVariantMap m = session.measurements();
+        QVERIFY(qAbs(m.value("leftDrift").toDouble() - 0.05) < 1e-9);
+        QCOMPARE(m.value("leftReach").toDouble(), -1.0);
+    }
+
+    void overlayServesPageAndEvents()
+    {
+        OverlayServer server;
+        QVERIFY(server.start(0) || server.start(47392));
+        const quint16 port = server.port();
+        server.publish(R"({"lx":0.5})");
+
+        QTcpSocket page;
+        page.connectToHost(QHostAddress::LocalHost, port);
+        QVERIFY(page.waitForConnected());
+        page.write("GET /nope HTTP/1.1\r\n\r\n");
+        QTRY_VERIFY(page.bytesAvailable() > 0 || page.waitForReadyRead(50));
+        QVERIFY(page.readAll().startsWith("HTTP/1.1 404"));
+
+        QTcpSocket events;
+        events.connectToHost(QHostAddress::LocalHost, port);
+        QVERIFY(events.waitForConnected());
+        events.write("GET /events HTTP/1.1\r\n\r\n");
+        QByteArray got;
+        QTRY_VERIFY((got += events.readAll()).contains(R"(data: {"lx":0.5})"));
+        QTRY_COMPARE(server.clients(), 1);
+        server.publish(R"({"lx":0.7})");
+        QTRY_VERIFY((got += events.readAll()).contains(R"(data: {"lx":0.7})"));
+    }
+
+    void lightbarProfileMode()
+    {
+        QTemporaryDir dir;
+        for (const char *c : {"red", "green", "blue", "global"}) {
+            QDir(dir.path()).mkpath(QString("input9:%1").arg(c));
+            write(dir.filePath(QString("input9:%1/brightness").arg(c)), "0");
+        }
+        Lightbar lightbar;
+        lightbar.setTargets({dir.filePath("input9:red")});
+        lightbar.setProfileColor(QColor(0, 255, 0));
+        lightbar.setMode(Lightbar::ProfileColor);
+        QFile green(dir.filePath("input9:green/brightness"));
+        QVERIFY(green.open(QIODevice::ReadOnly));
+        QCOMPARE(green.readAll().toInt(), 255);
     }
 
     void profileRoundTripsAndClamps()

@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file alias="Main.qml">Main.qml</file>
+        <file alias="overlay.html">overlay.html</file>
         <file alias="StickCard.qml">StickCard.qml</file>
         <file alias="StickPreview.qml">StickPreview.qml</file>
         <file alias="SettingSlider.qml">SettingSlider.qml</file>
@@ -14,6 +15,10 @@
         <file alias="InfoIcon.qml">InfoIcon.qml</file>
         <file alias="LegendItem.qml">LegendItem.qml</file>
         <file alias="SessionCard.qml">SessionCard.qml</file>
+        <file alias="OverlayCard.qml">OverlayCard.qml</file>
+        <file alias="HealthCard.qml">HealthCard.qml</file>
+        <file alias="Trainer.qml">Trainer.qml</file>
+        <file alias="i18n/en.json">i18n/en.json</file>
         <file alias="RocketLeagueCard.qml">RocketLeagueCard.qml</file>
         <file alias="i18n/es.json">i18n/es.json</file>
     </qresource>

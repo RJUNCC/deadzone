@@ -14,7 +14,8 @@ Rectangle {
         qsTr("The controller keeps its own color."),
         qsTr("One color of your choice."),
         qsTr("Cycles smoothly through every color."),
-        qsTr("Green when full, through amber, to red when nearly empty.")
+        qsTr("Green when full, through amber, to red when nearly empty."),
+        qsTr("The current profile's color, so you can tell at a glance which one is on.")
     ]
 
     color: "#17171a"
@@ -32,7 +33,7 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 12
             Label {
-                text: qsTr("Lightbar")
+                text: qsTr("Controller")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
                 color: "#e4e4e7"
@@ -45,6 +46,15 @@ Rectangle {
                 border.color: "#2a2a30"
             }
             Item { Layout.fillWidth: true }
+            Label {
+                readonly property string link: backend.bluetooth ? "Bluetooth" : "USB"
+                text: backend.reportRate > 0 ? qsTr("%1 · %2 reports a second").arg(link).arg(backend.reportRate) : link
+                color: "#8b8b93"
+                font.pixelSize: 13
+            }
+            InfoIcon {
+                text: qsTr("How often the controller sends its state, measured while it moves. More reports a second means less delay between your thumb and the game. A wired DualShock 4 usually reports about 250 times a second.")
+            }
             Label {
                 visible: backend.battery >= 0
                 text: backend.charging ? qsTr("Battery %1%, charging").arg(backend.battery)
@@ -66,7 +76,7 @@ Rectangle {
             visible: root.light.available
             Layout.fillWidth: true
             Segmented {
-                options: [qsTr("Off"), qsTr("Color"), qsTr("Rainbow"), qsTr("Battery")]
+                options: [qsTr("Off"), qsTr("Color"), qsTr("Rainbow"), qsTr("Battery"), qsTr("Profile")]
                 current: root.light.mode
                 onPicked: index => root.light.mode = index
             }
@@ -164,6 +174,25 @@ Rectangle {
                 font.pixelSize: 13
                 font.features: { "tnum": 1 }
             }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Label { text: qsTr("Rumble"); color: "#c9c9cf"; font.pixelSize: 13; Layout.preferredWidth: 90 }
+            Slider {
+                Layout.fillWidth: true
+                from: 0
+                to: 1
+                stepSize: 0.05
+                value: backend.rumble
+                onMoved: backend.rumble = value
+            }
+            Label {
+                text: backend.rumble < 0.01 ? qsTr("Off") : Math.round(backend.rumble * 100) + "%"
+                color: "#8b8b93"
+                font.pixelSize: 13
+                font.features: { "tnum": 1 }
+            }
+            InfoIcon { text: qsTr("How strongly the controller vibrates when a game asks it to. Takes effect from the next vibration the game starts.") }
         }
     }
 }

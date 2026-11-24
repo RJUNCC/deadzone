@@ -1,4 +1,4 @@
-QT += core gui qml quick quickcontrols2
+QT += core gui qml quick quickcontrols2 network
 
 CONFIG += c++20 release
 TARGET = deadzone
@@ -10,6 +10,9 @@ HEADERS += \
     src/gamepads.h \
     src/lightbar.h \
     src/session.h \
+    src/history.h \
+    src/overlay.h \
+    src/clipboard.h \
     src/remapper.h \
     src/theme.h \
     src/translator.h
@@ -21,6 +24,8 @@ SOURCES += \
     src/gamepads.cpp \
     src/lightbar.cpp \
     src/session.cpp \
+    src/history.cpp \
+    src/overlay.cpp \
     src/remapper.cpp \
     src/theme.cpp \
     src/translator.cpp

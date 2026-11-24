@@ -13,6 +13,7 @@ struct GamepadInfo {
     QString lightbar;   // The red LED's sysfs directory (green and blue sit beside it), or empty.
     QString battery;    // The battery's power_supply directory, or empty.
     int vendor = 0, product = 0;
+    bool bluetooth = false;
     bool readable = false;
 
     bool operator==(const GamepadInfo &) const = default;

@@ -3,6 +3,7 @@
 #include <QPointF>
 #include <QString>
 #include <QVariantList>
+#include <QVariantMap>
 #include <deque>
 
 #include "curves.h"
@@ -24,6 +25,9 @@ public:
     // settings ("key" to value) that apply it. Empty when nothing needs
     // changing or too little was seen.
     QVariantList suggestions(const Profile &profile) const;
+    // What was measured, for the controller's history: drift at rest and
+    // the weakest reach toward the rim, per stick; -1 where too little was seen.
+    QVariantMap measurements() const;
     // Time spent in each cell of the stick's square, 0..1, row by row.
     QVariantList heatmap(bool left) const;
 

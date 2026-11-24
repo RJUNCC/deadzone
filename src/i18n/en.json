@@ -1,0 +1,14 @@
+{
+  "%n overlay(s) connected": {
+    "one": "%n overlay connected",
+    "other": "%n overlays connected"
+  },
+  "%n overshoot(s)": {
+    "one": "%n overshoot",
+    "other": "%n overshoots"
+  },
+  "Your last %n run(s); lower is faster.": {
+    "one": "Your last run; lower is faster.",
+    "other": "Your last %n runs; lower is faster."
+  }
+}

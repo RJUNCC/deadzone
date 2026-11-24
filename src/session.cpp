@@ -176,6 +176,23 @@ QVariantList Session::suggestions(const Profile &profile) const
     return out;
 }
 
+QVariantMap Session::measurements() const
+{
+    auto drift = [](const Stick &s) { return s.rest.size() >= 120 ? percentile(s.rest, 0.995) : -1.0; };
+    auto reach = [](const Stick &s) {
+        int covered = 0;
+        double weakest = 1.0;
+        for (double r : s.reach)
+            if (r > 0.6) {
+                ++covered;
+                weakest = std::min(weakest, r);
+            }
+        return covered >= 24 ? weakest : -1.0;
+    };
+    return {{"leftDrift", drift(m_left)}, {"rightDrift", drift(m_right)},
+            {"leftReach", reach(m_left)}, {"rightReach", reach(m_right)}};
+}
+
 QVariantList Session::heatmap(bool left) const
 {
     const Stick &s = left ? m_left : m_right;

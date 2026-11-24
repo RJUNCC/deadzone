@@ -1,0 +1,117 @@
+#include "history.h"
+
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QLocale>
+#include <QSaveFile>
+#include <QStandardPaths>
+#include <cmath>
+
+namespace {
+
+// Enough to see a trend without the file growing forever.
+constexpr int keep = 200;
+
+qint64 now(qint64 when)
+{
+    return when > 0 ? when : QDateTime::currentSecsSinceEpoch();
+}
+
+}
+
+History::History(const QString &path) : m_path(path.isEmpty() ? defaultPath() : path)
+{
+    QFile file(m_path);
+    if (file.open(QIODevice::ReadOnly))
+        m_data = QJsonDocument::fromJson(file.readAll()).object();
+}
+
+QString History::defaultPath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/deadzone/history.json";
+}
+
+void History::save() const
+{
+    QDir().mkpath(QFileInfo(m_path).absolutePath());
+    QSaveFile file(m_path);
+    if (file.open(QIODevice::WriteOnly)) {
+        file.write(QJsonDocument(m_data).toJson(QJsonDocument::Compact));
+        file.commit();
+    }
+}
+
+void History::addHealth(const QString &controller, double leftDrift, double rightDrift, double leftReach,
+                        double rightReach, qint64 when)
+{
+    QJsonObject pad = m_data.value(controller).toObject();
+    QJsonArray list = pad.value("health").toArray();
+    list.append(QJsonObject{{"t", now(when)}, {"leftDrift", leftDrift}, {"rightDrift", rightDrift},
+                            {"leftReach", leftReach}, {"rightReach", rightReach}});
+    while (list.size() > keep)
+        list.removeFirst();
+    pad.insert("health", list);
+    m_data.insert(controller, pad);
+    save();
+}
+
+QVariantList History::health(const QString &controller) const
+{
+    return m_data.value(controller).toObject().value("health").toArray().toVariantList();
+}
+
+QString History::trend(const QVariantList &health, const QString &leftName, const QString &rightName)
+{
+    QStringList parts;
+    for (const auto &[key, name] : {std::pair{QStringLiteral("leftDrift"), leftName}, std::pair{QStringLiteral("rightDrift"), rightName}}) {
+        double first = -1, last = -1;
+        qint64 since = 0;
+        for (const QVariant &item : health) {
+            const QVariantMap entry = item.toMap();
+            const double value = entry.value(key).toDouble();
+            if (value < 0)
+                continue;
+            if (first < 0) {
+                first = value;
+                since = entry.value("t").toLongLong();
+            }
+            last = value;
+        }
+        if (first < 0 || std::abs(last - first) < 0.015)
+            continue;
+        const QString date = QLocale().toString(QDateTime::fromSecsSinceEpoch(since).date(), QLocale::ShortFormat);
+        parts.append((last > first ? QCoreApplication::translate("History", "%1 drift rose from %2% to %3% since %4.")
+                                   : QCoreApplication::translate("History", "%1 drift fell from %2% to %3% since %4."))
+                         .arg(name).arg(std::lround(first * 100)).arg(std::lround(last * 100)).arg(date));
+    }
+    return parts.join(' ');
+}
+
+bool History::addTrainer(const QString &controller, const QString &mode, double milliseconds, int misses, qint64 when)
+{
+    QJsonObject pad = m_data.value(controller).toObject();
+    QJsonObject trainer = pad.value("trainer").toObject();
+    QJsonArray list = trainer.value(mode).toArray();
+    bool best = true;
+    for (const QJsonValue &v : list)
+        if (v.toObject().value("ms").toDouble() <= milliseconds)
+            best = false;
+    list.append(QJsonObject{{"t", now(when)}, {"ms", milliseconds}, {"misses", misses}});
+    while (list.size() > keep)
+        list.removeFirst();
+    trainer.insert(mode, list);
+    pad.insert("trainer", trainer);
+    m_data.insert(controller, pad);
+    save();
+    return best;
+}
+
+QVariantList History::trainer(const QString &controller, const QString &mode) const
+{
+    return m_data.value(controller).toObject().value("trainer").toObject().value(mode).toArray().toVariantList();
+}

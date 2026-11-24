@@ -233,6 +233,7 @@ void Remapper::readSource()
                 if (ev.code == SYN_DROPPED) {
                     m_dropped = true;
                 } else if (ev.code == SYN_REPORT) {
+                    noteReport(ev.time);
                     if (m_dropped) {
                         resync();
                         m_dropped = false;
@@ -246,7 +247,7 @@ void Remapper::readSource()
 
             if (ev.type == EV_ABS) {
                 if (ev.code == ABS_HAT0X || ev.code == ABS_HAT0Y) {
-                    emitEvent(EV_ABS, ev.code, std::clamp(ev.value, -1, 1));
+                    handleHat(ev.code, std::clamp(ev.value, -1, 1));
                     continue;
                 }
                 for (int axis = 0; axis < AxisCount; ++axis)
@@ -263,7 +264,7 @@ void Remapper::readSource()
                 if (code >= BTN_DPAD_UP && code <= BTN_DPAD_RIGHT) {
                     const int hat = code == BTN_DPAD_LEFT || code == BTN_DPAD_RIGHT ? ABS_HAT0X : ABS_HAT0Y;
                     const int dir = code == BTN_DPAD_LEFT || code == BTN_DPAD_UP ? -1 : 1;
-                    emitEvent(EV_ABS, hat, ev.value ? dir : 0);
+                    handleHat(hat, ev.value ? dir : 0);
                     continue;
                 }
                 // Digital triggers only stand in when there are no analog ones.
@@ -272,10 +273,80 @@ void Remapper::readSource()
                     continue;
                 }
                 if (std::find(std::begin(virtualButtons), std::end(virtualButtons), code) != std::end(virtualButtons))
-                    emitEvent(EV_KEY, code, ev.value);
+                    handleKey(code, ev.value);
             }
         }
     }
+}
+
+void Remapper::setButton(int bit, bool down)
+{
+    if (down)
+        m_buttons |= 1u << bit;
+    else
+        m_buttons &= ~(1u << bit);
+}
+
+void Remapper::handleKey(int code, int value)
+{
+    // Codes here are already the Xbox pad's: A is the bottom button.
+    static const QHash<int, int> bits{{BTN_A, Cross}, {BTN_B, Circle}, {BTN_X, Square}, {BTN_Y, Triangle},
+                                      {BTN_TL, L1}, {BTN_TR, R1}, {BTN_SELECT, Share}, {BTN_START, Options},
+                                      {BTN_MODE, PS}, {BTN_THUMBL, L3}, {BTN_THUMBR, R3}};
+    if (value != 2)
+        setButton(bits.value(code), value != 0);
+
+    // PS is held back until it is clear whether it starts a combo: released
+    // without one, it reaches the game as a quick press.
+    if (code == BTN_MODE && m_comboEnabled) {
+        if (value == 1) {
+            m_modeHeld = true;
+            m_comboUsed = false;
+        } else if (value == 0) {
+            m_modeHeld = false;
+            if (!m_comboUsed) {
+                emitEvent(EV_KEY, BTN_MODE, 1);
+                emitEvent(EV_SYN, SYN_REPORT, 0);
+                emitEvent(EV_KEY, BTN_MODE, 0);
+            }
+        }
+        return;
+    }
+    emitEvent(EV_KEY, code, value);
+}
+
+void Remapper::handleHat(int code, int value)
+{
+    if (code == ABS_HAT0X) {
+        setButton(DpadLeft, value < 0);
+        setButton(DpadRight, value > 0);
+    } else {
+        setButton(DpadUp, value < 0);
+        setButton(DpadDown, value > 0);
+    }
+    if (m_modeHeld) {
+        if (code == ABS_HAT0X && value != 0) {
+            m_comboUsed = true;
+            emit profileStep(value);
+        }
+        // Nothing the d-pad does while PS is held reaches the game.
+        return;
+    }
+    emitEvent(EV_ABS, code, value);
+}
+
+// The rate counts reports over the last half second. A resting controller
+// sends nothing, so the last rate measured while moving is kept.
+void Remapper::noteReport(const timeval &time)
+{
+    const double now = time.tv_sec + time.tv_usec / 1e6;
+    if (!m_reports.empty() && now - m_reports.back() > 0.05)
+        m_reports.clear();   // A pause: start counting again.
+    m_reports.push_back(now);
+    while (m_reports.size() > 2 && now - m_reports.front() > 0.5)
+        m_reports.erase(m_reports.begin());
+    if (m_reports.size() >= 40)
+        m_rate = (m_reports.size() - 1) / (m_reports.back() - m_reports.front());
 }
 
 // Applies the profile to the axes and sends one report to the virtual pad.
@@ -293,7 +364,7 @@ void Remapper::flush()
     const double r2Out = Curves::trigger(m_raw[R2], profile.r2);
     {
         QMutexLocker lock(&m_mutex);
-        m_live = {leftRaw, leftOut, rightRaw, rightOut, m_raw[L2], l2Out, m_raw[R2], r2Out};
+        m_live = {leftRaw, leftOut, rightRaw, rightOut, m_raw[L2], l2Out, m_raw[R2], r2Out, m_buttons, m_rate};
     }
 
     if (m_virtual < 0) {
@@ -370,6 +441,11 @@ void Remapper::uploadEffect(int requestId)
         return;
     ff_effect effect = upload.effect;
     effect.id = m_effects.value(upload.effect.id, -1);
+    if (effect.type == FF_RUMBLE) {
+        const double strength = std::clamp(m_rumble.load(), 0.0, 1.0);
+        effect.u.rumble.strong_magnitude = quint16(effect.u.rumble.strong_magnitude * strength);
+        effect.u.rumble.weak_magnitude = quint16(effect.u.rumble.weak_magnitude * strength);
+    }
     if (ioctl(m_source, EVIOCSFF, &effect) == 0) {
         m_effects.insert(upload.effect.id, effect.id);
         upload.retval = 0;

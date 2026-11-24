@@ -23,7 +23,7 @@ class Lightbar : public QObject {
 
 public:
     // Off leaves the controller's own color alone.
-    enum Mode { Off = 0, Solid = 1, Rainbow = 2, Battery = 3 };
+    enum Mode { Off = 0, Solid = 1, Rainbow = 2, Battery = 3, ProfileColor = 4 };
 
     explicit Lightbar(QObject *parent = nullptr);
 
@@ -42,6 +42,10 @@ public:
     // Each target is a lightbar's red LED directory.
     void setTargets(const QStringList &targets);
     void setBattery(int percent);
+    // The current profile's color, for Profile mode.
+    void setProfileColor(const QColor &color);
+    // Shows a color briefly over whatever the mode shows, times times.
+    void flash(const QColor &color, int times = 2);
     // Puts back the colors the controllers had before deadzone changed them.
     void restore();
     // Files the udev rule must hand to the user, for the lightbars present now.
@@ -68,6 +72,10 @@ private:
     double m_speed = 0.25;        // Trips round the color wheel per second.
     double m_brightness = 1.0;
     int m_battery = -1;
+    QColor m_profileColor = QColor("#ffd60a");
+    QColor m_flashColor;
+    int m_flashSteps = 0;
+    QTimer m_flash;
     QStringList m_targets;
     QHash<QString, QColor> m_original, m_written;
     QColor m_current;

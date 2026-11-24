@@ -52,6 +52,7 @@ QList<GamepadInfo> scan(const QString &inputDirectory, const QString &sysClass)
         info.name = readSys(sys + "/name");
         info.vendor = readSys(sys + "/id/vendor").toInt(nullptr, 16);
         info.product = readSys(sys + "/id/product").toInt(nullptr, 16);
+        info.bluetooth = readSys(sys + "/id/bustype").toInt(nullptr, 16) == 0x05;
         info.driver = QFileInfo(QFileInfo(sys + "/device/driver").symLinkTarget()).fileName();
         const QString uniq = readSys(sys + "/uniq");
         info.id = QString("%1:%2:%3").arg(info.vendor, 4, 16, QChar('0')).arg(info.product, 4, 16, QChar('0'))

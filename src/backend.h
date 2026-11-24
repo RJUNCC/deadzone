@@ -16,9 +16,12 @@
 #include "gamepads.h"
 #include "lightbar.h"
 #include "session.h"
+#include "history.h"
+#include "overlay.h"
 
 class QThread;
 class Remapper;
+#include "remapper.h"
 
 class Backend : public QObject {
     Q_OBJECT
@@ -51,6 +54,19 @@ class Backend : public QObject {
     Q_PROPERTY(bool backgroundAvailable READ backgroundAvailable CONSTANT)
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY gameChanged)
     Q_PROPERTY(QString rawHeldBy READ rawHeldBy NOTIFY hideChanged)
+    Q_PROPERTY(bool overlayEnabled READ overlayEnabled WRITE setOverlayEnabled NOTIFY overlayChanged)
+    Q_PROPERTY(int overlayPort READ overlayPort WRITE setOverlayPort NOTIFY overlayChanged)
+    Q_PROPERTY(QString overlayUrl READ overlayUrl NOTIFY overlayChanged)
+    Q_PROPERTY(QString overlayError READ overlayError NOTIFY overlayChanged)
+    Q_PROPERTY(int overlayClients READ overlayClients NOTIFY overlayChanged)
+    Q_PROPERTY(bool comboSwitch READ comboSwitch WRITE setComboSwitch NOTIFY settingsChanged)
+    Q_PROPERTY(double rumble READ rumble WRITE setRumble NOTIFY settingsChanged)
+    Q_PROPERTY(int reportRate READ reportRate NOTIFY liveChanged)
+    Q_PROPERTY(bool bluetooth READ bluetooth NOTIFY controllersChanged)
+    Q_PROPERTY(QString profileColor READ profileColor NOTIFY profileChanged)
+    Q_PROPERTY(QString switchedTo READ switchedTo NOTIFY switched)
+    Q_PROPERTY(QVariantList health READ health NOTIFY historyChanged)
+    Q_PROPERTY(QString healthTrend READ healthTrend NOTIFY historyChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY sessionChanged)
     Q_PROPERTY(int sessionElapsed READ sessionElapsed NOTIFY sessionChanged)
     Q_PROPERTY(int sessionDuration READ sessionDuration NOTIFY sessionChanged)
@@ -73,7 +89,8 @@ class Backend : public QObject {
 public:
     // configPath lets tests run without touching the user's settings;
     // watchDevices false skips controllers, games, and the udev rule.
-    explicit Backend(const QString &configPath = {}, bool watchDevices = true, QObject *parent = nullptr);
+    explicit Backend(const QString &configPath = {}, bool watchDevices = true, QObject *parent = nullptr,
+                     const QString &historyPath = {});
     ~Backend() override;
 
     QVariantList controllers() const;
@@ -111,6 +128,23 @@ public:
     bool background() const { return m_background; }
     void setBackground(bool enabled);
     QString rawHeldBy() const { return m_rawHeldBy; }
+    bool overlayEnabled() const { return m_overlayEnabled; }
+    void setOverlayEnabled(bool enabled);
+    int overlayPort() const { return m_overlayPort; }
+    void setOverlayPort(int port);
+    QString overlayUrl() const { return QString("http://localhost:%1/").arg(m_overlayPort); }
+    QString overlayError() const { return m_overlay.error(); }
+    int overlayClients() const { return m_overlay.clients(); }
+    bool comboSwitch() const { return m_comboSwitch; }
+    void setComboSwitch(bool enabled);
+    double rumble() const { return m_rumble; }
+    void setRumble(double strength);
+    int reportRate() const { return int(std::lround(m_live.rate)); }
+    bool bluetooth() const { return m_selected >= 0 && m_selected < m_devices.size() && m_devices.at(m_selected).bluetooth; }
+    QString profileColor() const;
+    QString switchedTo() const { return m_switchedTo; }
+    QVariantList health() const;
+    QString healthTrend() const;
     bool recording() const { return m_recording; }
     int sessionElapsed() const { return m_recording ? int(m_sessionClock.elapsed() / 1000) : m_sessionSeconds; }
     int sessionDuration() const { return m_sessionDuration; }
@@ -180,6 +214,15 @@ public:
     Q_INVOKABLE double gameSetting(const QString &key) const { return m_game.value(key, 0.0); }
     Q_INVOKABLE void setGameSetting(const QString &key, double value);
 
+    Q_INVOKABLE void setProfileColor(const QString &color);
+    // A profile as a code to paste anywhere, and adding one back. Returns
+    // an empty string on success, or what went wrong.
+    Q_INVOKABLE QString exportProfile() const { return Codes::encode(profile()); }
+    Q_INVOKABLE QString importProfile(const QString &code);
+    // Precision trainer results; returns true for a new best.
+    Q_INVOKABLE bool saveTrainerResult(const QString &mode, double milliseconds, int misses);
+    Q_INVOKABLE QVariantList trainerHistory(const QString &mode) const;
+
     Q_INVOKABLE void selectProfile(int index);
     Q_INVOKABLE void newProfile(const QString &preset);
     Q_INVOKABLE void duplicateProfile();
@@ -228,6 +271,10 @@ signals:
     void batteryChanged();
     void gameChanged();
     void sessionChanged();
+    void overlayChanged();
+    void settingsChanged();
+    void switched();
+    void historyChanged();
 
 private:
     struct Worker {
@@ -257,6 +304,9 @@ private:
     void writeRules(const QStringList &ids, bool lightbar);
     void updateBattery();
     void readGameIni();
+    void stepProfile(int step);
+    void publishOverlay();
+    QString controllerId() const;
     void checkHolders();
     QString uniqueName(const QString &base) const;
 
@@ -278,10 +328,7 @@ private:
     QFileSystemWatcher m_watcher;
     QTimer m_rescan, m_poll, m_fallbackScan, m_games;
 
-    struct {
-        QPointF leftRaw, leftOut, rightRaw, rightOut;
-        double l2Raw = 0, l2Out = 0, r2Raw = 0, r2Out = 0;
-    } m_live;
+    LiveState m_live;
 
     struct {
         QString key;        // "left.drift", "right.edge", or empty.
@@ -299,6 +346,13 @@ private:
     int m_gameRevision = 0;
     QHash<QString, double> m_game{{"deadzone", 0.0}, {"dodge", 0.5}, {"steering", 1.0}, {"aerial", 1.0}};
     QString m_rawHeldBy;
+    OverlayServer m_overlay;
+    History m_history;
+    bool m_overlayEnabled = false, m_comboSwitch = true, m_lowBatteryWarned = false;
+    int m_overlayPort = 7337;
+    double m_rumble = 1.0;
+    QString m_switchedTo;
+    QTimer m_switchedClear;
     Session m_session;
     bool m_recording = false, m_sessionDone = false;
     int m_sessionDuration = 300, m_sessionSeconds = 0;
