@@ -1037,12 +1037,18 @@ private slots:
             theme.setName("not-a-theme");
             QCOMPARE(theme.name(), QString("omarchy"));
             theme.setName("ember");
+            QCOMPARE(theme.buddy(), QString("car"));
+            theme.setBuddy("cat");
+            theme.setBuddy("dragon");
+            QCOMPARE(theme.buddy(), QString("none"));
+            theme.setBuddy("dog");
         }
         Theme again(dir.path(), nullptr, {}, settings);
         QCOMPARE(again.name(), QString("ember"));
         QVERIFY(!again.animations());
         QVERIFY(!again.particles());
         QCOMPARE(again.themes().size(), 12);
+        QCOMPARE(again.buddy(), QString("dog"));
     }
 
     void themeFollowsHyprlandRounding()

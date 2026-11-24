@@ -10,6 +10,19 @@ OverlayServer::OverlayServer(QObject *parent) : QObject(parent)
     connect(&m_server, &QTcpServer::newConnection, this, &OverlayServer::accept);
 }
 
+// Open connections are children of the server, which is destroyed after the
+// list of streams; closing one then would reach into that list. Cut them
+// loose from this object and close them first.
+OverlayServer::~OverlayServer()
+{
+    const auto sockets = m_server.findChildren<QTcpSocket *>();
+    for (QTcpSocket *socket : sockets) {
+        disconnect(socket, nullptr, this, nullptr);
+        delete socket;
+    }
+    m_streams.clear();
+}
+
 bool OverlayServer::start(quint16 port)
 {
     stop();

@@ -105,6 +105,30 @@ Popup {
 
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.border }
 
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Label { text: qsTr("Buddy"); color: theme.text; font.pixelSize: 14 }
+                Label {
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 400
+                    text: qsTr("A little friend on top of the page. It follows your left stick, hops when you jump, and flips when you flip; the car boosts when you boost. Click it to say hi. It naps while the window is in the background.")
+                    wrapMode: Text.Wrap
+                    color: theme.muted
+                    font.pixelSize: 12
+                }
+            }
+            Segmented {
+                readonly property var keys: ["none", "car", "cat", "dog"]
+                options: [qsTr("None"), qsTr("Car"), qsTr("Cat"), qsTr("Dog")]
+                current: keys.indexOf(theme.buddy)
+                onPicked: index => theme.buddy = keys[index]
+            }
+        }
+
         Repeater {
             model: [
                 { key: "animations", label: qsTr("Animations"), help: qsTr("Tabs glide in, scrolling eases, choices slide, and themes fade into each other.") },

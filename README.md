@@ -133,7 +133,7 @@ The window has four tabs: Tune, Rocket League, Practice, and Controller.
 | H | Hide the real controller from games |
 | L | Next lightbar mode |
 | T | Open the precision trainer |
-| A | Themes, animations, and particles |
+| A | Themes, animations, particles, and your buddy |
 | PS + ← → (on the controller) | Previous or next profile |
 | R | Reset the profile to its preset |
 | Esc | Stop measuring |
@@ -181,7 +181,12 @@ Forest, Lagoon, Mono, Paper, and Sand) are fixed. Two switches sit below:
   when it snaps across, and each flip gets a burst. They pause whenever the
   window isn't focused, so they never cost the game a frame.
 
-The choice is saved in `~/.config/deadzone/appearance.json`.
+- **Buddy**: a pixel-art car, cat, or dog lives on top of the page. It
+  wanders about, follows your left stick, hops when you jump, and flips the
+  way you flip; the car boosts when you boost and turns around at the walls.
+  Click it to say hi. It naps while the window is in the background.
+
+The choices are saved in `~/.config/deadzone/appearance.json`.
 
 ## Performance
 

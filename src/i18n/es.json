@@ -414,5 +414,12 @@
   "Lagoon": "Laguna",
   "Mono": "Mono",
   "Paper": "Papel",
-  "Sand": "Arena"
+  "Sand": "Arena",
+  "Buddy": "Compañero",
+  "Car": "Coche",
+  "Cat": "Gato",
+  "Dog": "Perro",
+  "A little friend on top of the page. It follows your left stick, hops when you jump, and flips when you flip; the car boosts when you boost. Click it to say hi. It naps while the window is in the background.": "Un pequeño amigo encima de la página. Sigue tu stick izquierdo, salta cuando saltas y hace flips cuando tú los haces; el coche usa turbo cuando tú lo usas. Haz clic para saludarlo. Duerme la siesta mientras la ventana está en segundo plano.",
+  "None": "Ninguno",
+  "Themes, animations, particles, and your buddy": "Temas, animaciones, partículas y tu compañero"
 }

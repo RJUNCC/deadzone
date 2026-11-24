@@ -75,7 +75,7 @@ ApplicationWindow {
         ["H", qsTr("Hide the real controller from games")],
         ["L", qsTr("Next lightbar mode")],
         ["T", qsTr("Open the precision trainer")],
-        ["A", qsTr("Themes, animations, and particles")],
+        ["A", qsTr("Themes, animations, particles, and your buddy")],
         ["PS + ← →", qsTr("Previous or next profile, from the controller")],
         ["R", qsTr("Reset the profile to its preset")],
         ["Esc", qsTr("Stop measuring")],
@@ -318,6 +318,7 @@ ApplicationWindow {
             }
 
             StackLayout {
+                id: pages
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 currentIndex: win.hasController ? tabs.currentIndex : 0
@@ -758,6 +759,18 @@ ApplicationWindow {
                 }
             }
         }
+    }
+
+    // The companion, standing on the top edge of the page.
+    Buddy {
+        kind: theme.buddy === "none" ? "car" : theme.buddy
+        visible: theme.buddy !== "none" && !win.trainerVisible && pages.visible
+        awake: win.active || win.previewWithoutController
+        minX: 20
+        maxX: win.width - 20
+        // The first card starts 20px into the page; stand on its top edge.
+        y: pages.y + 20 - height + 1
+        z: 5
     }
 
     // The old look, held over the new one while it fades away.

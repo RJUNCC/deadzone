@@ -15,6 +15,7 @@ class OverlayServer : public QObject {
 
 public:
     explicit OverlayServer(QObject *parent = nullptr);
+    ~OverlayServer() override;
     // Where /recording?name= reads saved input recordings from.
     void setRecordingsDirectory(const QString &directory) { m_recordings = directory; }
 

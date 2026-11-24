@@ -199,6 +199,15 @@ void Theme::setParticles(bool on) {
     emit changed();
 }
 
+void Theme::setBuddy(const QString &buddy) {
+    const QString value = QStringList{"none", "car", "cat", "dog"}.contains(buddy) ? buddy : QStringLiteral("none");
+    if (value == m_buddy)
+        return;
+    m_buddy = value;
+    saveSettings();
+    emit changed();
+}
+
 void Theme::loadSettings() {
     if (m_settingsPath.isEmpty())
         return;
@@ -210,6 +219,8 @@ void Theme::loadSettings() {
     m_name = findPreset(name) ? name : QStringLiteral("omarchy");
     m_animations = o.value("animations").toBool(true);
     m_particles = o.value("particles").toBool(true);
+    const QString buddy = o.value("buddy").toString("car");
+    m_buddy = QStringList{"none", "car", "cat", "dog"}.contains(buddy) ? buddy : QStringLiteral("car");
 }
 
 void Theme::saveSettings() const {
@@ -219,7 +230,7 @@ void Theme::saveSettings() const {
     QSaveFile file(m_settingsPath);
     if (!file.open(QIODevice::WriteOnly))
         return;
-    file.write(QJsonDocument(QJsonObject{{"theme", m_name}, {"animations", m_animations}, {"particles", m_particles}}).toJson());
+    file.write(QJsonDocument(QJsonObject{{"theme", m_name}, {"animations", m_animations}, {"particles", m_particles}, {"buddy", m_buddy}}).toJson());
     file.commit();
 }
 

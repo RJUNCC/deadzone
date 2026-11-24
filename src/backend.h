@@ -98,6 +98,8 @@ class Backend : public QObject {
     Q_PROPERTY(double l2Out READ l2Out NOTIFY liveChanged)
     Q_PROPERTY(double r2Raw READ r2Raw NOTIFY liveChanged)
     Q_PROPERTY(double r2Out READ r2Out NOTIFY liveChanged)
+    // What the game receives as buttons, one bit per LiveButton.
+    Q_PROPERTY(int liveButtons READ liveButtons NOTIFY liveChanged)
 
 public:
     // The window passes the display's refresh rate, so live updates reach
@@ -202,6 +204,7 @@ public:
     double l2Out() const { return m_live.l2Out; }
     double r2Raw() const { return m_live.r2Raw; }
     double r2Out() const { return m_live.r2Out; }
+    int liveButtons() const { return int(m_live.buttons); }
 
     // A slider drag is one edit: begin on press, set while moving, end on
     // release, so one undo puts the whole drag back.

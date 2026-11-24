@@ -35,6 +35,8 @@ class Theme : public QObject {
     // Motion: transitions between tabs and states, and the particles.
     Q_PROPERTY(bool animations READ animations WRITE setAnimations NOTIFY changed)
     Q_PROPERTY(bool particles READ particles WRITE setParticles NOTIFY changed)
+    // A companion along the top of the page: "none", "car", "cat", or "dog".
+    Q_PROPERTY(QString buddy READ buddy WRITE setBuddy NOTIFY changed)
 
 public:
     explicit Theme(const QString &currentDirectory = {}, QObject *parent = nullptr, const QString &hyprctl = {},
@@ -67,6 +69,8 @@ public:
     void setAnimations(bool on);
     bool particles() const { return m_particles; }
     void setParticles(bool on);
+    QString buddy() const { return m_buddy; }
+    void setBuddy(const QString &buddy);
 
     // Every surface and text shade, mixed from three colors so each theme
     // stays consistent: the window background, the foreground, the accent.
@@ -94,6 +98,7 @@ private:
     bool m_light = false;
     bool m_animations = true;
     bool m_particles = true;
+    QString m_buddy = "car";
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QString m_hyprctl;
