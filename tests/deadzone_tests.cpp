@@ -68,19 +68,20 @@ struct FakePad {
         ioctl(fd, UI_SET_EVBIT, EV_ABS);
         for (int key : keys)
             ioctl(fd, UI_SET_KEYBIT, key);
-        auto axis = [&](int code, int min, int max) {
+        // Sticks rest centred; triggers rest released, at their minimum.
+        auto axis = [&](int code, int min, int max, bool centred = true) {
             uinput_abs_setup setup{};
             setup.code = code;
             setup.absinfo.minimum = min;
             setup.absinfo.maximum = max;
-            setup.absinfo.value = (min + max) / 2;
+            setup.absinfo.value = centred ? (min + max) / 2 : min;
             ioctl(fd, UI_SET_ABSBIT, code);
             ioctl(fd, UI_ABS_SETUP, &setup);
         };
         for (int code : {ABS_X, ABS_Y, ABS_RX, ABS_RY})
             axis(code, stickMin, stickMax);
-        axis(ABS_Z, 0, triggerMax);
-        axis(ABS_RZ, 0, triggerMax);
+        axis(ABS_Z, 0, triggerMax, false);
+        axis(ABS_RZ, 0, triggerMax, false);
         axis(ABS_HAT0X, -1, 1);
         axis(ABS_HAT0Y, -1, 1);
         uinput_setup setup{};
