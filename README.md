@@ -2,42 +2,46 @@
 
 ![Deadzone shaping a controller's sticks and triggers](docs/screenshot.png)
 
-Stick deadzones, response curves, and trigger ranges for any controller on
-Omarchy, in the spirit of DS4Windows. Deadzone takes over the real controller
-and hands games a virtual Xbox 360 pad with your settings applied, so every
-game, Steam, and Proton get the same feel without per-game setup. Rumble from
-games is passed back to the controller.
+Stick deadzones, response curves, and trigger ranges for Rocket League on
+Omarchy, in the spirit of DS4Windows. Deadzone takes over the real
+controller and hands the game a virtual Xbox 360 pad with your settings
+applied. Rumble is passed back to the controller.
+
+## Rocket League
+
+- **Remap only while Rocket League runs**: outside the game the controller
+  works as normal; Deadzone takes over the moment `RocketLeague.exe` starts.
+- **Keep running without the window**: a systemd user service that starts at
+  login. Together with the switch above, you never open Deadzone before
+  playing.
+- **Your in-game settings**: type in Controller Deadzone, Dodge Deadzone, and
+  Steering and Aerial Sensitivity from the game, and Deadzone shows how they
+  combine with yours: whether the two deadzones stack (with a button to
+  cancel it), how far you push before flips go directional (a blue ring on
+  the left stick), and where full steer and full aerial control arrive.
+- **Trigger deadzone**: Rocket League adds its own deadzone to the triggers
+  in `TAInput.ini`. Deadzone reads it from the game's Proton prefix and
+  offers to cancel it with trigger anti-deadzone.
+- **Profiles** start from a preset: Standard, Freestyle (finer aerial
+  control), or Worn stick (bigger deadzone, lower outer edge).
 
 ## What you can set
 
-Every setting has a short description under it in the window (press `I` to
-hide them).
+Each setting explains itself behind its info icon (`I` shows them all).
 
 | Setting | What it does |
 | --- | --- |
-| Shape | **Circle**: every direction needs the same push to leave the deadzone. **Square**: reaches further toward the diagonals. **Cross**: each axis has its own deadzone, so straight pushes stay straight. |
-| Deadzone | Below this the stick reads as centered. Output starts from zero at the edge, so there is no jump. |
-| Outer edge | Past this the stick reads as fully pushed, for sticks that never quite reach the rim. |
-| Anti-deadzone | The smallest output once you leave the deadzone, to cancel a game's own deadzone. |
-| Diagonal reach | Lets diagonals reach full travel on both axes, like an Xbox stick. Round-gated sticks such as the DualShock 4 otherwise stop near 71% per axis at a diagonal. Independent of the deadzone shape: the shape is the center, this is the rim. |
-| Response | **Curve**: one exponent, 1 is linear. **Custom**: drag points on the graph to draw your own. |
-| Triggers | Deadzone, outer edge, and anti-deadzone for each trigger. |
+| Shape | **Circle**, **Square**, **Cross** (each axis alone), or **Custom**: drag eight handles to set how far the deadzone reaches in each direction. |
+| Separate horizontal and vertical | Its own width and height: an oval, a rectangle, or two bands. |
+| Deadzone | Below this the stick reads as centered, up to 100%. Output starts from zero at the edge, so there is no jump. |
+| Anti-deadzone | The smallest output once you leave the deadzone, to cancel the game's own deadzone. |
+| Outer edge | Past this the stick reads as fully pushed. |
+| Diagonal reach | Lets diagonals reach full travel on both axes, like an Xbox stick; the DualShock 4 otherwise stops near 71% per axis. |
+| Response | Presets (Linear, Soft center, Precise, Quick, S-curve, Two-stage), one exponent, or a curve drawn point by point. |
+| Triggers | Deadzone, outer edge, and anti-deadzone for each. |
 
-**Measure drift** (let go for three seconds) and **Measure edge** (roll the
-stick around the rim for five) fit the deadzone and outer edge to your stick.
-
-## Profiles
-
-Each profile is a full set of settings. New profiles start from a preset
-(Default, Rocket League, Shooter, Racing), and each preset comes with tips for
-setting up its game. Give a profile part of a game's program name, like
-`RocketLeague.exe`, and it switches in while that game runs and switches back
-when it closes. Settings save on their own to `~/.config/deadzone/config.json`.
-
-The Rocket League preset uses a small circular deadzone, full diagonal reach on the
-left stick so a diagonal gives full steer and full pitch at once, and a 10%
-trigger anti-deadzone to cancel the one Rocket League adds to the triggers on
-its own.
+**Measure drift** and **Measure edge** fit the deadzone and outer edge to
+your stick.
 
 ## Shortcuts
 
@@ -46,7 +50,7 @@ its own.
 | Space | Turn remapping on or off |
 | P | Switch to the next profile |
 | D | Show the next controller |
-| I | Show or hide descriptions |
+| I | Show every description under its setting |
 | H | Hide the real controller from games |
 | L | Next lightbar mode |
 | R | Reset the profile to its preset |
@@ -70,22 +74,17 @@ HID node, which skips Deadzone, so a game sees two controllers: Start on the
 second one joins split screen. **Hide from games** installs
 `/etc/udev/rules.d/72-deadzone.rules` (it asks for your password), which keeps
 that node away from your user now and on every reconnect. Turn the
-controller off and on once afterwards so programs that already opened it let
-go. With Deadzone closed, games still get the controller the ordinary way.
+controller off and on once afterwards (unplug and replug the cable) so
+programs that already opened it let go; the window ticks this off once
+nothing has it open any more. With Deadzone closed, games still get the controller the ordinary way.
 Turning the switch off removes the rule.
 
 ## Without the window
 
-Remapping stops when the window closes. To keep it running in the
-background, with the settings saved from the window:
-
-```sh
-deadzone run                                # until Ctrl+C
-systemctl --user enable --now deadzone      # at every login
-```
-
-Close the window before starting the service: only one of them can hold a
-controller at a time. `deadzone list --json` shows what Deadzone can see.
+Turn on **Keep running without the window** in the Rocket League card, or
+run `deadzone run` yourself. While the window is open it does the remapping
+and the service waits; closing the window hands back to the service.
+`deadzone list --json` shows what Deadzone can see.
 
 ## Building
 

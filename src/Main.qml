@@ -18,7 +18,7 @@ ApplicationWindow {
     Material.roundedScale: theme.radius
 
     property bool helpVisible: false
-    property bool showDescriptions: true
+    property bool showDescriptions: false
     // Single-key shortcuts stay out of the way while a text field has focus.
     readonly property bool typing: activeFocusItem !== null && activeFocusItem.hasOwnProperty("cursorPosition")
 
@@ -39,7 +39,7 @@ ApplicationWindow {
         ["Space", qsTr("Turn remapping on or off")],
         ["P", qsTr("Switch to the next profile")],
         ["D", qsTr("Show the next controller")],
-        ["I", qsTr("Show or hide descriptions")],
+        ["I", qsTr("Show every description under its setting")],
         ["H", qsTr("Hide the real controller from games")],
         ["L", qsTr("Next lightbar mode")],
         ["R", qsTr("Reset the profile to its preset")],
@@ -92,7 +92,8 @@ ApplicationWindow {
                     Item { Layout.fillWidth: true }
                     Label {
                         text: !win.hasController ? ""
-                              : backend.active ? qsTr("Games see a virtual Xbox 360 pad")
+                              : backend.remapping ? qsTr("Games see a virtual Xbox 360 pad")
+                              : backend.active ? qsTr("Waiting for Rocket League to start")
                                                : qsTr("Off: games see the controller as-is")
                         color: backend.active ? "#c9c9cf" : "#8b8b93"
                         font.pixelSize: 13
@@ -125,7 +126,7 @@ ApplicationWindow {
                 }
 
                 SplitScreenCard {
-                    visible: win.hasController && (backend.exposed || backend.notice.length > 0)
+                    visible: win.hasController && (backend.exposed || (backend.hideFromGames && backend.rawHeldBy.length > 0))
                     Layout.fillWidth: true
                     Layout.leftMargin: 20
                     Layout.rightMargin: 20
@@ -151,6 +152,13 @@ ApplicationWindow {
                             text: backend.calibrationMessage
                         }
                     }
+                }
+
+                RocketLeagueCard {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
                 }
 
                 ProfileBar {
@@ -193,6 +201,7 @@ ApplicationWindow {
                         Layout.preferredWidth: 1
                         side: "left"
                         title: qsTr("Left stick")
+                        dodge: { backend.revision; backend.gameRevision; return backend.travelFor("left", backend.gameSetting("dodge")) }
                         raw: backend.leftRaw
                         out: backend.leftOut
                     }

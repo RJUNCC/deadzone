@@ -10,10 +10,13 @@
 // fractions of full travel, so they mean the same thing on every controller.
 struct StickSettings {
     // The shape of the area that reads as centered.
-    enum Shape { Circle = 0, Square = 1, Cross = 2 };
+    enum Shape { Circle = 0, Square = 1, Cross = 2, Custom = 3 };
 
     Shape shape = Circle;
-    double inner = 0.06;   // Size of the deadzone.
+    double inner = 0.06;   // Size of the deadzone; its width when split.
+    double innerY = 0.06;  // Its height, used only when split.
+    bool split = false;    // Separate horizontal and vertical sizes.
+    QList<double> radii = QList<double>(8, 0.06);   // Custom shape: size toward right, down-right, down, ... clockwise.
     double outer = 0.95;   // At or past this the stick reads as fully pushed.
     double anti = 0.0;     // The smallest output once past the deadzone, for games with their own.
     double curve = 1.0;    // Exponent: 1 is linear, above 1 is finer near the center.
@@ -54,6 +57,11 @@ struct Profile {
 namespace Curves {
 // The exponent or drawn curve, for a value already past the deadzone (0..1).
 double response(double scaled, const StickSettings &settings);
+// How far the deadzone reaches along a unit direction (dx, dy).
+double boundary(double dx, double dy, const StickSettings &settings);
+// Sets the response to a named preset: linear, soft, precise, quick, scurve, dual.
+void applyCurvePreset(StickSettings &settings, const QString &id);
+QStringList curvePresets();
 // Maps a magnitude in 0..1 through the deadzones, curve, and anti-deadzone.
 double shape(double magnitude, double inner, double outer, double anti, double curve);
 double shape(double magnitude, double inner, double outer, const StickSettings &settings);

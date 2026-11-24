@@ -4,7 +4,7 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 // One stick: its live preview, its response graph, and the values that
-// shape it, each with what it does.
+// shape it, grouped by the center, the rim, and the response between.
 Rectangle {
     id: root
 
@@ -12,23 +12,23 @@ Rectangle {
     property string title
     property point raw
     property point out
+    property real dodge: -1
 
     readonly property int shape: { backend.revision; return Math.round(backend.setting(side + ".shape")) }
+    readonly property bool split: { backend.revision; return backend.setting(side + ".split") >= 0.5 }
     readonly property bool custom: { backend.revision; return backend.setting(side + ".custom") >= 0.5 }
     readonly property bool measuring: backend.calibrating.startsWith(side + ".")
-    readonly property bool descriptions: ApplicationWindow.window.showDescriptions
 
     color: "#17171a"
     radius: theme.radius
     border.color: "#232328"
     implicitHeight: content.implicitHeight + 32
 
-    function percent(p) { return Math.round(Math.min(1, Math.hypot(p.x, p.y)) * 100) }
-
     readonly property var shapeDescriptions: [
         qsTr("Round deadzone: every direction needs the same push to leave it. The most natural feel for steering and aiming."),
         qsTr("Square deadzone: reaches further toward the diagonals, so small diagonal wobbles are ignored while straight pushes respond as soon as they leave the edge."),
-        qsTr("Each axis has its own deadzone, so pushing straight up never leaks a little sideways. Good for racing, menus, and anything that wants clean straight lines.")
+        qsTr("Each axis has its own deadzone, so pushing straight up never leaks a little sideways."),
+        qsTr("Drag the eight handles on the stick picture to set how far the deadzone reaches in each direction. It starts as the shape you had.")
     ]
 
     ColumnLayout {
@@ -37,15 +37,11 @@ Rectangle {
         anchors.margins: 16
         spacing: 10
 
-        RowLayout {
-            Layout.fillWidth: true
-            Label {
-                text: root.title
-                font.pixelSize: 16
-                font.weight: Font.DemiBold
-                color: "#e4e4e7"
-                Layout.fillWidth: true
-            }
+        Label {
+            text: root.title
+            font.pixelSize: 16
+            font.weight: Font.DemiBold
+            color: "#e4e4e7"
         }
 
         RowLayout {
@@ -59,11 +55,11 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: 180
                     Layout.preferredHeight: 180
+                    side: root.side
                     raw: root.raw
                     out: root.out
+                    dodge: root.dodge
                     accent: theme.accent
-                    shape: root.shape
-                    inner: { backend.revision; return backend.setting(root.side + ".inner") }
                     outer: { backend.revision; return backend.setting(root.side + ".outer") }
                     square: { backend.revision; return backend.setting(root.side + ".square") }
                 }
@@ -98,7 +94,7 @@ Rectangle {
         // Measuring fits the deadzone and outer edge to this stick.
         RowLayout {
             Layout.fillWidth: true
-            spacing: 8
+            spacing: 4
             Button {
                 text: qsTr("Measure drift")
                 flat: true
@@ -115,6 +111,9 @@ Rectangle {
                 Material.roundedScale: theme.radius
                 onClicked: backend.calibrate(root.side, "edge")
             }
+            InfoIcon {
+                text: qsTr("Measure drift: let go of the stick for three seconds and the deadzone is set just above its wobble. Measure edge: roll the stick around the rim for five seconds and the outer edge is set where every direction still reaches.")
+            }
             Item { Layout.fillWidth: true }
             ProgressBar {
                 visible: root.measuring
@@ -123,45 +122,64 @@ Rectangle {
             }
         }
         Label {
-            visible: root.measuring || (root.descriptions && backend.calibrating.length === 0)
+            visible: root.measuring
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             font.pixelSize: 12
-            color: root.measuring ? theme.accent : "#76767e"
-            text: root.measuring ? backend.calibrationMessage
-                                 : qsTr("Measure drift: let go of the stick for three seconds and the deadzone is set just above its wobble. Measure edge: roll the stick around the rim for five seconds and the outer edge is set where every direction still reaches.")
+            color: theme.accent
+            text: backend.calibrationMessage
         }
 
         SectionLabel { text: qsTr("Center") }
         RowLayout {
             Layout.fillWidth: true
+            spacing: 6
             Label {
-                text: qsTr("Deadzone shape")
+                text: qsTr("Shape")
                 color: "#c9c9cf"
                 font.pixelSize: 13
-                Layout.fillWidth: true
             }
+            InfoIcon { text: root.shapeDescriptions[root.shape] }
+            Item { Layout.fillWidth: true }
             Segmented {
-                options: [qsTr("Circle"), qsTr("Square"), qsTr("Cross")]
+                options: [qsTr("Circle"), qsTr("Square"), qsTr("Cross"), qsTr("Custom")]
                 current: root.shape
                 onPicked: index => backend.change(root.side + ".shape", index)
             }
         }
-        Label {
-            visible: root.descriptions
+        RowLayout {
+            visible: root.shape !== 3
             Layout.fillWidth: true
-            Layout.topMargin: -6
-            text: root.shapeDescriptions[root.shape]
-            wrapMode: Text.Wrap
-            color: "#76767e"
-            font.pixelSize: 12
+            spacing: 6
+            Label {
+                text: qsTr("Separate horizontal and vertical")
+                color: "#c9c9cf"
+                font.pixelSize: 13
+            }
+            InfoIcon {
+                text: qsTr("Gives the deadzone its own width and height: an oval for Circle, a rectangle for Square, two bands for Cross. A narrow, tall deadzone lets steering respond instantly while ignoring small up and down wobble.")
+            }
+            Item { Layout.fillWidth: true }
+            Switch {
+                checked: root.split
+                focusPolicy: Qt.NoFocus
+                onToggled: backend.change(root.side + ".split", checked ? 1 : 0)
+            }
         }
         SettingSlider {
+            visible: root.shape !== 3
             Layout.fillWidth: true
             key: root.side + ".inner"
-            label: qsTr("Deadzone")
-            description: qsTr("How far the stick can move before games see anything. Set it just above your stick's drift.")
-            to: 0.5
+            label: root.split ? qsTr("Horizontal deadzone") : qsTr("Deadzone")
+            description: root.split ? qsTr("How far the stick can move left or right before games see anything.")
+                                    : qsTr("How far the stick can move before games see anything. Set it just above your stick's drift.")
+        }
+        SettingSlider {
+            visible: root.split && root.shape !== 3
+            Layout.fillWidth: true
+            key: root.side + ".innerY"
+            label: qsTr("Vertical deadzone")
+            description: qsTr("How far the stick can move up or down before games see anything.")
         }
         SettingSlider {
             Layout.fillWidth: true
@@ -187,14 +205,56 @@ Rectangle {
         }
 
         SectionLabel { text: qsTr("Response") }
+        Flow {
+            Layout.fillWidth: true
+            spacing: 6
+            Repeater {
+                model: backend.curvePresetIds()
+                delegate: Button {
+                    required property var modelData
+                    text: backend.curvePresetName(modelData)
+                    focusPolicy: Qt.NoFocus
+                    implicitHeight: 30
+                    leftPadding: 10
+                    rightPadding: 10
+                    contentItem: Label {
+                        text: parent.text
+                        font.pixelSize: 12
+                        color: "#c9c9cf"
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    background: Rectangle {
+                        radius: Math.min(4, theme.radius)
+                        color: parent.down ? "#34343c" : parent.hovered ? "#26262c" : "#1e1e23"
+                    }
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 300
+                    ToolTip.text: ({
+                        linear: qsTr("What you push is what the game gets."),
+                        soft: qsTr("Gentler near the center for small corrections, full speed at the rim."),
+                        precise: qsTr("Much finer near the center; for careful aerials and dribbles."),
+                        quick: qsTr("Responds strongly to small pushes; for fast turns."),
+                        scurve: qsTr("Gentle at both ends and quick through the middle."),
+                        dual: qsTr("Fine control for the first half of the travel, then quick to full.")
+                    })[modelData]
+                    onClicked: backend.applyCurvePreset(root.side, modelData)
+                }
+            }
+        }
         RowLayout {
             Layout.fillWidth: true
+            spacing: 6
             Label {
                 text: qsTr("Shape of the response")
                 color: "#c9c9cf"
                 font.pixelSize: 13
-                Layout.fillWidth: true
             }
+            InfoIcon {
+                text: root.custom ? qsTr("Drag the points on the graph to draw your own response. Flat stretches ignore that part of the travel; steep ones make it more sensitive.")
+                                  : qsTr("One number bends the whole range. Switch to Custom to draw it point by point.")
+            }
+            Item { Layout.fillWidth: true }
             Button {
                 visible: root.custom
                 text: qsTr("Straighten")
@@ -210,19 +270,9 @@ Rectangle {
                 onPicked: index => backend.change(root.side + ".custom", index)
             }
         }
-        Label {
-            visible: root.descriptions && root.custom
-            Layout.fillWidth: true
-            Layout.topMargin: -6
-            text: qsTr("Drag the points on the graph to draw your own response. Flat stretches ignore that part of the travel; steep ones make it more sensitive.")
-            wrapMode: Text.Wrap
-            color: "#76767e"
-            font.pixelSize: 12
-        }
         SettingSlider {
             visible: !root.custom
             Layout.fillWidth: true
-            Layout.topMargin: -6
             key: root.side + ".curve"
             label: qsTr("Response curve")
             description: qsTr("Bends the middle of the range. Above 1 is finer near the center and faster at the rim; below 1 is the opposite.")

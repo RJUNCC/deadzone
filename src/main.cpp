@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -25,7 +26,7 @@
 
 namespace {
 
-const char *version = "0.3.0";
+const char *version = "0.4.0";
 
 void usage(FILE *out)
 {
@@ -141,10 +142,19 @@ int main(int argc, char *argv[])
     Translator translator;
     app.installTranslator(&translator);
 
+    // Only one remapper can hold a controller. While the window is open it
+    // does the work, so a running background service steps aside and is
+    // started again when the window closes.
+    if (QProcess::execute("systemctl", {"--user", "--quiet", "is-active", "deadzone"}) == 0)
+        QProcess::execute("systemctl", {"--user", "stop", "deadzone"});
+
     Theme theme;
     Backend backend;
-    // Hidden controllers are handed back before the window goes away.
-    QObject::connect(&app, &QGuiApplication::aboutToQuit, &backend, &Backend::shutdown);
+    QObject::connect(&app, &QGuiApplication::aboutToQuit, &backend, [&backend] {
+        backend.shutdown();
+        if (backend.background())
+            QProcess::startDetached("systemctl", {"--user", "start", "deadzone"});
+    });
 
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);

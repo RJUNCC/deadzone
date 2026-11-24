@@ -2,17 +2,23 @@ import QtQuick
 
 // The stick's travel as a circle: the deadzone shaded in the middle in its
 // shape, the outer edge as a ring, the raw position as a grey dot, and what
-// games receive as the accent dot.
+// games receive as the accent dot. A custom shape shows handles to drag.
 Item {
     id: root
 
+    property string side: "left"
     property point raw: Qt.point(0, 0)
     property point out: Qt.point(0, 0)
-    property real inner: 0
     property real outer: 1
-    property int shape: 0       // 0 circle, 1 square, 2 cross.
     property real square: 0
+    property real dodge: -1       // Stick travel where Rocket League flips go directional.
     property color accent: "#FFD60A"
+
+    readonly property int shape: { backend.revision; return Math.round(backend.setting(side + ".shape")) }
+    readonly property real innerX: { backend.revision; return backend.setting(side + ".inner") }
+    readonly property real innerY: { backend.revision; return backend.setting(side + ".split") >= 0.5 ? backend.setting(side + ".innerY") : innerX }
+    readonly property var outline: { backend.revision; return backend.deadzoneOutline(side) }
+    readonly property var radii: { backend.revision; return [0, 1, 2, 3, 4, 5, 6, 7].map(i => Math.hypot(outline[i * 12].x, outline[i * 12].y)) }
 
     implicitWidth: 190
     implicitHeight: 190
@@ -32,7 +38,7 @@ Item {
             ctx.reset()
 
             // Where the output dot can go: the circle stretched toward a
-            // square as Square output rises.
+            // square as Diagonal reach rises.
             if (root.square > 0) {
                 ctx.strokeStyle = Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.35)
                 ctx.setLineDash([3, 3])
@@ -78,16 +84,17 @@ Item {
             ctx.fill()
 
             ctx.fillStyle = "#34343c"
-            const d = r * root.inner
-            if (root.shape === 0) {
-                ctx.beginPath()
-                ctx.arc(root.cx, root.cy, d, 0, Math.PI * 2)
-                ctx.fill()
-            } else if (root.shape === 1) {
-                ctx.fillRect(root.cx - d, root.cy - d, 2 * d, 2 * d)
+            if (root.shape === 2) {
+                ctx.fillRect(root.cx - r, root.cy - r * root.innerY, 2 * r, 2 * r * root.innerY)
+                ctx.fillRect(root.cx - r * root.innerX, root.cy - r, 2 * r * root.innerX, 2 * r)
             } else {
-                ctx.fillRect(root.cx - r, root.cy - d, 2 * r, 2 * d)
-                ctx.fillRect(root.cx - d, root.cy - r, 2 * d, 2 * r)
+                ctx.beginPath()
+                for (let i = 0; i < root.outline.length; ++i) {
+                    const p = root.outline[i]
+                    i === 0 ? ctx.moveTo(root.cx + p.x * r, root.cy + p.y * r) : ctx.lineTo(root.cx + p.x * r, root.cy + p.y * r)
+                }
+                ctx.closePath()
+                ctx.fill()
             }
             ctx.restore()
 
@@ -97,6 +104,18 @@ Item {
             ctx.arc(root.cx, root.cy, r * root.outer, 0, Math.PI * 2)
             ctx.stroke()
 
+            // Rocket League's dodge deadzone, as stick travel: inside it a
+            // jump goes straight up, outside it flips in that direction.
+            if (root.dodge > 0 && root.dodge <= 1) {
+                ctx.strokeStyle = "#60a5fa"
+                ctx.setLineDash([5, 4])
+                ctx.lineWidth = 1.5
+                ctx.beginPath()
+                ctx.arc(root.cx, root.cy, r * root.dodge, 0, Math.PI * 2)
+                ctx.stroke()
+                ctx.setLineDash([])
+            }
+
             ctx.strokeStyle = "#2a2a30"
             ctx.lineWidth = 1
             ctx.beginPath()
@@ -105,10 +124,13 @@ Item {
         }
     }
 
-    onInnerChanged: zones.requestPaint()
+    Connections {
+        target: backend
+        function onRevisionChanged() { zones.requestPaint() }
+    }
     onOuterChanged: zones.requestPaint()
-    onShapeChanged: zones.requestPaint()
     onSquareChanged: zones.requestPaint()
+    onDodgeChanged: zones.requestPaint()
     onAccentChanged: zones.requestPaint()
     onWidthChanged: zones.requestPaint()
     onHeightChanged: zones.requestPaint()
@@ -127,5 +149,40 @@ Item {
         border.width: 2
         x: root.cx + root.out.x * root.size / 2 - width / 2
         y: root.cy + root.out.y * root.size / 2 - height / 2
+    }
+
+    // Custom shape: one handle per direction, dragged in or out.
+    Repeater {
+        model: root.shape === 3 ? 8 : 0
+        delegate: Rectangle {
+            required property int index
+            readonly property real angle: index * Math.PI / 4
+            readonly property real reach: root.radii[index]
+            width: 14; height: 14; radius: 7
+            color: drag.pressed || drag.containsMouse ? root.accent : "#0e0e10"
+            border.color: root.accent
+            border.width: 2
+            x: root.cx + Math.cos(angle) * reach * root.size / 2 - width / 2
+            y: root.cy + Math.sin(angle) * reach * root.size / 2 - height / 2
+
+            MouseArea {
+                id: drag
+                anchors.fill: parent
+                anchors.margins: -6
+                hoverEnabled: true
+                preventStealing: true
+                cursorShape: Qt.SizeAllCursor
+                onPressed: backend.beginEdit()
+                onReleased: backend.endEdit()
+                onPositionChanged: mouse => {
+                    if (!pressed)
+                        return
+                    const at = mapToItem(root, mouse.x, mouse.y)
+                    // Only the distance along this direction counts.
+                    const along = ((at.x - root.cx) * Math.cos(angle) + (at.y - root.cy) * Math.sin(angle)) / (root.size / 2)
+                    backend.setRadius(root.side, index, along)
+                }
+            }
+        }
     }
 }

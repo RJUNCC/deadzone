@@ -9,7 +9,7 @@ Rectangle {
     id: root
 
     readonly property bool hidden: backend.hideFromGames && !backend.exposed
-    readonly property bool reconnected: hidden && backend.notice.length === 0
+    readonly property bool reconnected: hidden && backend.rawHeldBy.length === 0
 
     color: "#1d1a10"
     radius: theme.radius
@@ -42,7 +42,9 @@ Rectangle {
                 { done: root.hidden,
                   text: qsTr("Hide the real controller from games. Deadzone adds a udev rule that keeps the raw device away from Steam and games, now and on every reconnect. It asks for your password once.") },
                 { done: root.reconnected,
-                  text: qsTr("Turn the controller off and on once, or restart Steam. Steam already has the raw device open and keeps it until it goes away.") }
+                  text: root.hidden && backend.rawHeldBy.length > 0
+                        ? qsTr("Unplug the cable and plug it back in (on Bluetooth, hold the PS button for ten seconds to turn it off, then press it again), or restart Steam. Still holding it open: %1.").arg(backend.rawHeldBy)
+                        : qsTr("Unplug the cable and plug it back in (on Bluetooth, hold the PS button for ten seconds to turn it off, then press it again), or restart Steam. Programs that opened the raw device before keep it until then.") }
             ]
             delegate: RowLayout {
                 required property var modelData

@@ -76,12 +76,15 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent)
     m_fallbackScan.setInterval(3000);
     connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::rescan);
     connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::updateBattery);
+    connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::checkHolders);
 
     m_games.setInterval(2000);
     connect(&m_games, &QTimer::timeout, this, &Backend::checkGames);
 
     if (m_watchDevices) {
         readRule();
+        readGameIni();
+        m_background = QProcess::execute("systemctl", {"--user", "--quiet", "is-enabled", "deadzone"}) == 0;
         m_watcher.addPath("/dev/input");
         m_poll.start();
         m_fallbackScan.start();
@@ -107,12 +110,16 @@ void Backend::load()
     if (!file.open(QIODevice::ReadOnly)) {
         // First run: a neutral profile, plus Rocket League ready to switch
         // in on its own.
-        m_profiles = {Presets::make("default"), Presets::make("rocketleague")};
+        m_profiles = {Presets::make("rocketleague")};
         return;
     }
     const QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
     m_active = root.value("active").toBool(true);
     m_lightbar.load(root.value("lightbar").toObject());
+    m_onlyWhileGame = root.value("onlyWhileGame").toBool(false);
+    const QJsonObject game = root.value("rocketLeague").toObject();
+    for (auto it = m_game.begin(); it != m_game.end(); ++it)
+        it.value() = game.value(it.key()).toDouble(it.value());
 
     m_profiles.clear();
     for (const QJsonValue &value : root.value("profiles").toArray())
@@ -122,7 +129,7 @@ void Backend::load()
         // Rocket League joins it.
         Profile first = Profile::fromJson(root.value("profile").toObject());
         first.name = "Default";
-        first.preset = "default";
+        first.preset = "rocketleague";
         m_profiles = {first, Presets::make("rocketleague")};
     }
     m_manual = m_current = std::clamp(root.value("current").toInt(0), 0, int(m_profiles.size()) - 1);
@@ -139,8 +146,12 @@ void Backend::save()
     QJsonArray profiles;
     for (const Profile &profile : std::as_const(m_profiles))
         profiles.append(profile.toJson());
-    const QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active},
-                           {"lightbar", m_lightbar.toJson()}};
+    QJsonObject root{{"version", 2}, {"profiles", profiles}, {"current", m_manual}, {"active", m_active},
+                           {"lightbar", m_lightbar.toJson()}, {"onlyWhileGame", m_onlyWhileGame}};
+    QJsonObject game;
+    for (auto it = m_game.cbegin(); it != m_game.cend(); ++it)
+        game.insert(it.key(), it.value());
+    root.insert("rocketLeague", game);
     file.write(QJsonDocument(root).toJson());
     file.commit();
 }
@@ -176,6 +187,7 @@ void Backend::setActive(bool active)
     m_active = active;
     save();
     emit activeChanged();
+    emit gameChanged();
     restartWorkers();
     emit hideChanged();
 }
@@ -223,6 +235,15 @@ void Backend::setSetting(const QString &key, double value)
     Profile next = profile();
     if (!next.setValue(key, value) || next == profile())
         return;
+    StickSettings &before = key.startsWith("right") ? editable().right : editable().left;
+    StickSettings &after = key.startsWith("right") ? next.right : next.left;
+    // A custom shape starts as the shape it replaces, so it can be nudged
+    // rather than drawn from nothing; splitting starts square.
+    if (key.endsWith(".shape") && after.shape == StickSettings::Custom && before.shape != StickSettings::Custom)
+        for (int i = 0; i < 8; ++i)
+            after.radii[i] = std::min(1.0, Curves::boundary(std::cos(i * M_PI / 4), std::sin(i * M_PI / 4), before));
+    if (key.endsWith(".split") && after.split && !before.split)
+        after.innerY = after.inner;
     editable() = next;
     applyProfile();
 }
@@ -249,7 +270,7 @@ void Backend::change(const QString &key, double value)
 void Backend::resetProfile()
 {
     beginEdit();
-    Profile fresh = Presets::make(profile().preset.isEmpty() ? "default" : profile().preset);
+    Profile fresh = Presets::make(profile().preset);
     fresh.name = profile().name;
     fresh.match = profile().match;
     editable() = fresh;
@@ -367,7 +388,7 @@ void Backend::newProfile(const QString &preset)
 {
     pushUndo();
     Profile profile = Presets::make(preset);
-    profile.name = uniqueName(presetName(profile.preset));
+    profile.name = uniqueName(profile.name);
     // Only one profile should claim a game, so a second copy waits to be told.
     for (const Profile &other : std::as_const(m_profiles))
         if (!profile.match.isEmpty() && other.match.compare(profile.match, Qt::CaseInsensitive) == 0)
@@ -429,44 +450,217 @@ void Backend::setProfileMatch(const QString &match)
 
 QString Backend::presetName(const QString &preset) const
 {
-    if (preset == "rocketleague") return "Rocket League";
-    if (preset == "shooter") return tr("Shooter");
-    if (preset == "racing") return tr("Racing");
-    return tr("Default");
+    if (preset == "freestyle") return tr("Freestyle");
+    if (preset == "worn") return tr("Worn stick");
+    return tr("Standard");
 }
 
 QString Backend::presetTips(const QString &preset) const
 {
-    if (preset == "rocketleague")
-        return tr("In Rocket League's controller settings, set Controller Deadzone to its lowest value so it does not stack on this one; if you keep some, set Anti-deadzone here to the same amount. "
+    if (preset == "freestyle")
+        return tr("Freestyle keeps full diagonal reach on the left stick and adds a slight curve, so small corrections in the air are finer while a full push still turns at full speed. Raise Aerial Sensitivity in the game if air control feels slow.");
+    if (preset == "worn")
+        return tr("For sticks that drift and no longer reach the rim: a larger deadzone and a lower outer edge. Run Measure drift and Measure edge to fit both to your controller exactly.");
+    // Standard, and profiles made from presets older versions had.
+    return tr("In Rocket League's controller settings, set Controller Deadzone to its lowest value so it does not stack on this one; if you keep some, set Anti-deadzone here to the same amount. "
                   "Dodge Deadzone is a different thing: how far you push before a jump becomes a flip in that direction. Leave it where flips feel right; many players use 0.50 to 0.70. "
                   "Steering and Aerial Sensitivity are taste; 1.20 to 1.60 is common. "
                   "Here, run Measure drift on the left stick and Measure edge on both, and keep Diagonal reach at 100% so a diagonal gives full steer and full pitch together, which half-flips and turning while boosting need. "
                   "If Start opens split screen in training, the game sees your controller twice; the yellow card at the top walks through the fix.");
-    if (preset == "shooter")
-        return tr("Turn the game's own aim deadzone as low as it goes and let this one handle drift. Raise Response curve on the right stick for finer aim, lower it if turning feels slow. The short trigger travel fires sooner.");
-    if (preset == "racing")
-        return tr("Cross keeps steering separate from how far up or down the stick sits. A curve above 1 softens small corrections at speed. Set the game's steering deadzone to zero and its steering linearity to linear, so only this curve applies.");
-    return tr("A neutral starting point: a small round deadzone and a straight response. Run Measure drift to fit the deadzone to your stick.");
 }
 
-// Switches to a game's profile while it runs and back afterwards.
+// Watches for Rocket League, which can be the only time remapping happens.
 void Backend::checkGames()
 {
-    QStringList matches;
-    for (const Profile &profile : std::as_const(m_profiles))
-        matches.append(profile.match);
-    const int running = std::any_of(matches.cbegin(), matches.cend(), [](const QString &m) { return !m.isEmpty(); })
-                            ? runningMatch(matches) : -1;
-    if (running != m_dismissed)
-        m_dismissed = -1;
-    if (running >= 0 && running != m_dismissed && running != m_autoIndex) {
-        m_autoIndex = running;
-        setCurrent(running);
-    } else if (running < 0 && m_autoIndex >= 0) {
-        m_autoIndex = -1;
-        setCurrent(m_manual);
+    const bool running = runningMatch({"RocketLeague.exe"}) >= 0;
+    if (running == m_gameRunning)
+        return;
+    m_gameRunning = running;
+    readGameIni();
+    ++m_gameRevision;
+    emit gameChanged();
+    if (m_onlyWhileGame)
+        restartWorkers();
+}
+
+void Backend::setOnlyWhileGame(bool only)
+{
+    if (only == m_onlyWhileGame)
+        return;
+    m_onlyWhileGame = only;
+    save();
+    ++m_gameRevision;
+    emit gameChanged();
+    restartWorkers();
+}
+
+void Backend::setGameSetting(const QString &key, double value)
+{
+    if (!m_game.contains(key) || qFuzzyCompare(m_game.value(key) + 1, value + 1))
+        return;
+    m_game[key] = std::clamp(value, 0.0, 10.0);
+    save();
+    ++m_gameRevision;
+    emit gameChanged();
+}
+
+QStringList Backend::inputIniPaths()
+{
+    const QString tail = "/drive_c/users/steamuser/Documents/My Games/Rocket League/TAGame/Config/TAInput.ini";
+    const QString home = QDir::homePath();
+    QStringList paths{home + "/.local/share/Steam/steamapps/compatdata/252950/pfx" + tail,
+                      home + "/.steam/steam/steamapps/compatdata/252950/pfx" + tail};
+    // Heroic keeps Epic games in its own prefixes.
+    for (const QString &prefix : QDir(home + "/Games/Heroic/Prefixes").entryList(QDir::Dirs | QDir::NoDotAndDotDot))
+        paths.append(home + "/Games/Heroic/Prefixes/" + prefix + "/pfx" + tail);
+    return paths;
+}
+
+double Backend::readTriggerDeadzone(const QString &text)
+{
+    // GamepadDeadzones=( Type=IPT_360, Key=XboxTypeS_RightTriggerAxis, DeadZone=0.1 )
+    static const QRegularExpression line(R"(Type=IPT_360,\s*Key=XboxTypeS_(?:Right|Left)TriggerAxis,\s*DeadZone=([0-9.]+))");
+    double value = -1;
+    for (auto it = line.globalMatch(text); it.hasNext();)
+        value = std::max(value, it.next().captured(1).toDouble());
+    return value;
+}
+
+void Backend::readGameIni()
+{
+    double value = -1;
+    for (const QString &path : inputIniPaths()) {
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly)) {
+            value = readTriggerDeadzone(QString::fromUtf8(file.readAll()));
+            break;
+        }
     }
+    if (value != m_gameTriggerDeadzone) {
+        m_gameTriggerDeadzone = value;
+        ++m_gameRevision;
+        emit gameChanged();
+    }
+}
+
+bool Backend::backgroundAvailable() const
+{
+    return QFile::exists("/usr/lib/systemd/user/deadzone.service");
+}
+
+// The background service is the same remapper without a window. It starts
+// at login; while this window is open the window does the remapping and
+// the service waits (main.cpp stops it and starts it again on quit).
+void Backend::setBackground(bool enabled)
+{
+    if (enabled == m_background || !backgroundAvailable())
+        return;
+    const int code = QProcess::execute("systemctl", {"--user", enabled ? "enable" : "disable", "deadzone"});
+    if (code == 0)
+        m_background = enabled;
+    else
+        m_hideError = enabled ? tr("systemctl could not turn on the background service.")
+                              : tr("systemctl could not turn off the background service.");
+    emit gameChanged();
+    emit errorChanged();
+}
+
+QStringList Backend::holders(const QStringList &nodes, const QString &procDirectory)
+{
+    QStringList names;
+    if (nodes.isEmpty())
+        return names;
+    const QString self = QString::number(QCoreApplication::applicationPid());
+    for (const QString &pid : QDir(procDirectory).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (!pid.front().isDigit() || pid == self)
+            continue;
+        const QString fdDir = procDirectory + "/" + pid + "/fd";
+        for (const QString &fd : QDir(fdDir).entryList(QDir::Files | QDir::System | QDir::NoDotAndDotDot)) {
+            if (nodes.contains(QFileInfo(fdDir + "/" + fd).symLinkTarget())) {
+                QFile comm(procDirectory + "/" + pid + "/comm");
+                const QString name = comm.open(QIODevice::ReadOnly) ? QString::fromUtf8(comm.readAll()).trimmed() : pid;
+                if (!names.contains(name))
+                    names.append(name);
+                break;
+            }
+        }
+    }
+    return names;
+}
+
+// Step two of hiding is done once nothing else still has the raw node
+// open; a reconnect or a Steam restart are both ways to get there.
+void Backend::checkHolders()
+{
+    QStringList nodes;
+    if (!m_hiddenIds.isEmpty())
+        for (const Worker &worker : std::as_const(m_workers))
+            if (!worker.info.hidraw.isEmpty())
+                nodes.append(worker.info.hidraw);
+    const QString held = holders(nodes).join(", ");
+    if (held.isEmpty())
+        m_notice.clear();
+    if (held != m_rawHeldBy) {
+        m_rawHeldBy = held;
+        emit hideChanged();
+    }
+}
+
+void Backend::setRadius(const QString &side, int index, double radius)
+{
+    StickSettings &s = side == "right" ? editable().right : editable().left;
+    if (index < 0 || index >= s.radii.size())
+        return;
+    radius = std::clamp(radius, 0.0, 1.0);
+    if (qFuzzyCompare(s.radii.at(index) + 1, radius + 1))
+        return;
+    s.radii[index] = radius;
+    applyProfile();
+}
+
+QVariantList Backend::deadzoneOutline(const QString &side) const
+{
+    const StickSettings &s = side == "right" ? profile().right : profile().left;
+    QVariantList points;
+    for (int i = 0; i < 96; ++i) {
+        const double angle = i * 2 * M_PI / 96;
+        const double r = std::min(1.0, Curves::boundary(std::cos(angle), std::sin(angle), s));
+        points.append(QPointF(std::cos(angle) * r, std::sin(angle) * r));
+    }
+    return points;
+}
+
+QString Backend::curvePresetName(const QString &id) const
+{
+    if (id == "soft") return tr("Soft center");
+    if (id == "precise") return tr("Precise");
+    if (id == "quick") return tr("Quick");
+    if (id == "scurve") return tr("S-curve");
+    if (id == "dual") return tr("Two-stage");
+    return tr("Linear");
+}
+
+void Backend::applyCurvePreset(const QString &side, const QString &id)
+{
+    beginEdit();
+    Curves::applyCurvePreset(side == "right" ? editable().right : editable().left, id);
+    applyProfile();
+    endEdit();
+}
+
+double Backend::travelFor(const QString &side, double output) const
+{
+    if (output <= 0)
+        return 0;
+    if (responseAt(side, 1.0) < output - 1e-9)
+        return -1;
+    // The response never falls as travel grows, so halving finds it.
+    double low = 0, high = 1;
+    for (int i = 0; i < 40; ++i) {
+        const double mid = (low + high) / 2;
+        (responseAt(side, mid) >= output ? high : low) = mid;
+    }
+    return high;
 }
 
 int Backend::runningMatch(const QStringList &matches, const QString &procDirectory)
@@ -624,7 +818,7 @@ void Backend::startWorker(const GamepadInfo &info)
     worker.info = info;
     worker.thread = new QThread(this);
     worker.thread->setObjectName("deadzone " + info.path);
-    worker.remapper = new Remapper(info.path, info.driver, m_active, profile());
+    worker.remapper = new Remapper(info.path, info.driver, remapping(), profile());
     worker.remapper->moveToThread(worker.thread);
     connect(worker.thread, &QThread::started, worker.remapper, &Remapper::start);
 
@@ -827,6 +1021,7 @@ void Backend::writeRules(const QStringList &ids, bool lightbar)
         emit hideChanged();
         emit errorChanged();
         emit m_lightbar.targetsChanged();
+        checkHolders();
     });
     connect(m_hider, &QProcess::errorOccurred, this, [this, ruleFile](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart)

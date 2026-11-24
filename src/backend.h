@@ -42,6 +42,14 @@ class Backend : public QObject {
     Q_PROPERTY(QString profileMatch READ profileMatch NOTIFY profileChanged)
     Q_PROPERTY(QString profilePreset READ profilePreset NOTIFY profileChanged)
     Q_PROPERTY(QString autoGame READ autoGame NOTIFY profileChanged)
+    Q_PROPERTY(bool gameRunning READ gameRunning NOTIFY gameChanged)
+    Q_PROPERTY(bool onlyWhileGame READ onlyWhileGame WRITE setOnlyWhileGame NOTIFY gameChanged)
+    Q_PROPERTY(bool remapping READ remapping NOTIFY gameChanged)
+    Q_PROPERTY(double gameTriggerDeadzone READ gameTriggerDeadzone NOTIFY gameChanged)
+    Q_PROPERTY(int gameRevision READ gameRevision NOTIFY gameChanged)
+    Q_PROPERTY(bool backgroundAvailable READ backgroundAvailable CONSTANT)
+    Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY gameChanged)
+    Q_PROPERTY(QString rawHeldBy READ rawHeldBy NOTIFY hideChanged)
 
     Q_PROPERTY(QString calibrating READ calibrating NOTIFY calibrationChanged)
     Q_PROPERTY(double calibrationProgress READ calibrationProgress NOTIFY calibrationChanged)
@@ -87,6 +95,16 @@ public:
     QString profilePreset() const { return profile().preset; }
     QString autoGame() const { return m_autoIndex >= 0 ? m_profiles.at(m_autoIndex).name : QString(); }
     const Profile &profile() const { return m_profiles.at(m_current); }
+    bool gameRunning() const { return m_gameRunning; }
+    bool onlyWhileGame() const { return m_onlyWhileGame; }
+    void setOnlyWhileGame(bool only);
+    bool remapping() const { return m_active && (!m_onlyWhileGame || m_gameRunning); }
+    double gameTriggerDeadzone() const { return m_gameTriggerDeadzone; }
+    int gameRevision() const { return m_gameRevision; }
+    bool backgroundAvailable() const;
+    bool background() const { return m_background; }
+    void setBackground(bool enabled);
+    QString rawHeldBy() const { return m_rawHeldBy; }
     const QList<Profile> &profiles() const { return m_profiles; }
 
     QString calibrating() const { return m_calibration.key; }
@@ -121,6 +139,23 @@ public:
     Q_INVOKABLE void resetCurve(const QString &side);
     Q_INVOKABLE double responseAt(const QString &side, double magnitude) const;
 
+    // Custom deadzone shape: eight sizes around the stick, clockwise from right.
+    Q_INVOKABLE void setRadius(const QString &side, int index, double radius);
+    // The deadzone's outline, as points in stick coordinates, for drawing.
+    Q_INVOKABLE QVariantList deadzoneOutline(const QString &side) const;
+    Q_INVOKABLE QStringList curvePresetIds() const { return Curves::curvePresets(); }
+    Q_INVOKABLE QString curvePresetName(const QString &id) const;
+    Q_INVOKABLE void applyCurvePreset(const QString &side, const QString &id);
+    // How far a pure push must travel before games receive at least this
+    // much, or -1 if it never does.
+    Q_INVOKABLE double travelFor(const QString &side, double output) const;
+
+    // What the player has set inside Rocket League: deadzone, dodge,
+    // steering, aerial. Deadzone uses them to show where flips and full
+    // steer begin.
+    Q_INVOKABLE double gameSetting(const QString &key) const { return m_game.value(key, 0.0); }
+    Q_INVOKABLE void setGameSetting(const QString &key, double value);
+
     Q_INVOKABLE void selectProfile(int index);
     Q_INVOKABLE void newProfile(const QString &preset);
     Q_INVOKABLE void duplicateProfile();
@@ -151,6 +186,11 @@ public:
     static QStringList ruleIds(const QString &text);
     // Every process whose command line contains one of the matches; the
     // first match found wins. procDirectory is for tests.
+    // Rocket League's own deadzone on the Xbox triggers, from TAInput.ini.
+    static double readTriggerDeadzone(const QString &iniText);
+    static QStringList inputIniPaths();
+    // Names of other programs holding any of these device nodes open.
+    static QStringList holders(const QStringList &nodes, const QString &procDirectory = "/proc");
     static int runningMatch(const QStringList &matches, const QString &procDirectory = "/proc");
 
 signals:
@@ -162,6 +202,7 @@ signals:
     void calibrationChanged();
     void liveChanged();
     void batteryChanged();
+    void gameChanged();
 
 private:
     struct Worker {
@@ -190,6 +231,8 @@ private:
     void readRule();
     void writeRules(const QStringList &ids, bool lightbar);
     void updateBattery();
+    void readGameIni();
+    void checkHolders();
     QString uniqueName(const QString &base) const;
 
     QString m_configPath;
@@ -224,6 +267,13 @@ private:
         QString message;
     } m_calibration;
 
+    bool m_gameRunning = false;
+    bool m_onlyWhileGame = false;
+    bool m_background = false;
+    double m_gameTriggerDeadzone = -1;
+    int m_gameRevision = 0;
+    QHash<QString, double> m_game{{"deadzone", 0.0}, {"dodge", 0.5}, {"steering", 1.0}, {"aerial", 1.0}};
+    QString m_rawHeldBy;
     Lightbar m_lightbar;
     int m_battery = -1;
     bool m_charging = false;

@@ -70,15 +70,11 @@ Rectangle {
                 current: root.light.mode
                 onPicked: index => root.light.mode = index
             }
-            Label {
-                visible: root.descriptions
-                Layout.fillWidth: true
-                Layout.leftMargin: 8
-                wrapMode: Text.Wrap
-                color: "#76767e"
-                font.pixelSize: 12
-                text: root.modeDescriptions[root.light.mode]
+            InfoIcon {
+                Layout.leftMargin: 6
+                text: root.modeDescriptions[root.light.mode] + " " + qsTr("A dimmer lightbar lasts longer on battery. The controller gets its own color back when deadzone closes.")
             }
+            Item { Layout.fillWidth: true }
         }
 
         // Writing the lightbar needs permission once.
@@ -168,15 +164,6 @@ Rectangle {
                 font.pixelSize: 13
                 font.features: { "tnum": 1 }
             }
-        }
-        Label {
-            visible: root.descriptions && root.light.available && root.light.mode !== 0
-            Layout.fillWidth: true
-            Layout.topMargin: -6
-            wrapMode: Text.Wrap
-            color: "#76767e"
-            font.pixelSize: 12
-            text: qsTr("A dimmer lightbar lasts longer on battery. The controller gets its own color back when deadzone closes.")
         }
     }
 }

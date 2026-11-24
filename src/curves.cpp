@@ -43,6 +43,50 @@ double rescale(double magnitude, double inner, double outer)
 
 }
 
+double boundary(double dx, double dy, const StickSettings &s)
+{
+    const double a = s.inner, b = s.split ? s.innerY : s.inner;
+    switch (s.shape) {
+    case StickSettings::Square: {
+        // The edge of an a-by-b rectangle along this direction.
+        const double x = std::abs(dx) > 1e-9 ? a / std::abs(dx) : 1e9;
+        const double y = std::abs(dy) > 1e-9 ? b / std::abs(dy) : 1e9;
+        return std::min(x, y);
+    }
+    case StickSettings::Custom: {
+        // Straight interpolation between the eight drawn sizes, by angle.
+        double angle = std::atan2(dy, dx);
+        if (angle < 0)
+            angle += 2 * M_PI;
+        const double position = angle / (M_PI / 4);
+        const int k = int(position) % 8;
+        const double t = position - std::floor(position);
+        const auto r = [&](int i) { return s.radii.value(i % 8, s.inner); };
+        return r(k) + (r(k + 1) - r(k)) * t;
+    }
+    default:
+        // A circle, or an ellipse when split.
+        if (a < 1e-6 || b < 1e-6)
+            return std::min(a, b);
+        return 1.0 / std::sqrt((dx / a) * (dx / a) + (dy / b) * (dy / b));
+    }
+}
+
+QStringList curvePresets()
+{
+    return {"linear", "soft", "precise", "quick", "scurve", "dual"};
+}
+
+void applyCurvePreset(StickSettings &s, const QString &id)
+{
+    s.custom = id == "scurve" || id == "dual";
+    s.curve = id == "soft" ? 1.5 : id == "precise" ? 2.2 : id == "quick" ? 0.7 : 1.0;
+    if (id == "scurve")
+        s.points = {{0, 0}, {0.25, 0.1}, {0.5, 0.5}, {0.75, 0.9}, {1, 1}};
+    else if (id == "dual")
+        s.points = {{0, 0}, {0.25, 0.12}, {0.5, 0.28}, {0.75, 0.6}, {1, 1}};
+}
+
 double shape(double magnitude, double inner, double outer, double anti, double curve)
 {
     magnitude = std::clamp(magnitude, 0.0, 1.0);
@@ -67,19 +111,17 @@ QPointF stick(QPointF raw, const StickSettings &s)
     QPointF out;
     if (s.shape == StickSettings::Cross) {
         // Each axis on its own: a straight push stays exactly straight.
-        auto axis = [&](double v) { return std::copysign(shape(std::abs(v), s.inner, s.outer, s), v); };
-        out = {axis(x), axis(y)};
+        auto axis = [&](double v, double inner) { return std::copysign(shape(std::abs(v), inner, s.outer, s), v); };
+        out = {axis(x, s.inner), axis(y, s.split ? s.innerY : s.inner)};
     } else {
         const double magnitude = std::hypot(x, y);
         if (magnitude <= 1e-9)
             return {0.0, 0.0};
         const double dx = x / magnitude, dy = y / magnitude;
-        // A square deadzone reaches further on diagonals: along this
-        // direction its edge sits at inner / max(|dx|, |dy|). Measuring from
-        // that edge keeps the output continuous as the stick leaves it.
-        double inner = s.inner;
-        if (s.shape == StickSettings::Square)
-            inner = std::min(s.inner / std::max(std::abs(dx), std::abs(dy)), s.outer - 1e-3);
+        // Measuring from wherever the deadzone's edge sits along this
+        // direction keeps the output continuous as the stick leaves it,
+        // whatever the shape.
+        const double inner = boundary(dx, dy, s);
         // Square-gated sticks can report past the unit circle in the
         // corners; the direction is kept and the length capped.
         const double length = shape(std::min(magnitude, 1.0), inner, s.outer, s);
@@ -112,8 +154,12 @@ QJsonObject stickJson(const StickSettings &s)
     QJsonArray points;
     for (const QPointF &p : s.points)
         points.append(QJsonArray{p.x(), p.y()});
-    const char *shapes[] = {"circle", "square", "cross"};
-    return {{"shape", shapes[s.shape]}, {"inner", s.inner}, {"outer", s.outer}, {"anti", s.anti},
+    const char *shapes[] = {"circle", "square", "cross", "custom"};
+    QJsonArray radii;
+    for (double r : s.radii)
+        radii.append(r);
+    return {{"shape", shapes[s.shape]}, {"inner", s.inner}, {"innerY", s.innerY}, {"split", s.split}, {"radii", radii},
+            {"outer", s.outer}, {"anti", s.anti},
             {"curve", s.curve}, {"square", s.square}, {"custom", s.custom}, {"points", points}};
 }
 
@@ -124,9 +170,17 @@ StickSettings stickFrom(const QJsonObject &o)
     // Version 0.1 saved "mode": "radial" or "axial".
     if (shape == "square")
         s.shape = StickSettings::Square;
+    else if (shape == "custom")
+        s.shape = StickSettings::Custom;
     else if (shape == "cross" || o.value("mode").toString() == "axial")
         s.shape = StickSettings::Cross;
-    s.inner = std::clamp(o.value("inner").toDouble(s.inner), 0.0, 0.9);
+    s.inner = std::clamp(o.value("inner").toDouble(s.inner), 0.0, 1.0);
+    s.innerY = std::clamp(o.value("innerY").toDouble(s.inner), 0.0, 1.0);
+    s.split = o.value("split").toBool(false);
+    s.radii = QList<double>(8, s.inner);
+    const QJsonArray radii = o.value("radii").toArray();
+    for (int i = 0; i < 8 && i < radii.size(); ++i)
+        s.radii[i] = std::clamp(radii.at(i).toDouble(), 0.0, 1.0);
     s.outer = std::clamp(o.value("outer").toDouble(s.outer), 0.1, 1.0);
     s.anti = std::clamp(o.value("anti").toDouble(s.anti), 0.0, 0.9);
     s.curve = std::clamp(o.value("curve").toDouble(s.curve), 0.2, 4.0);
@@ -186,6 +240,8 @@ double Profile::value(const QString &key) const
     if (group == "left" || group == "right") {
         const StickSettings &s = group == "left" ? left : right;
         if (field == "inner") return s.inner;
+        if (field == "innerY") return s.innerY;
+        if (field == "split") return s.split ? 1.0 : 0.0;
         if (field == "outer") return s.outer;
         if (field == "anti") return s.anti;
         if (field == "curve") return s.curve;
@@ -206,19 +262,21 @@ bool Profile::setValue(const QString &key, double v)
     const QString group = key.section('.', 0, 0), field = key.section('.', 1);
     if (group == "left" || group == "right") {
         StickSettings &s = group == "left" ? left : right;
-        if (field == "inner") s.inner = std::clamp(v, 0.0, 0.9);
+        if (field == "inner") s.inner = std::clamp(v, 0.0, 1.0);
+        else if (field == "innerY") s.innerY = std::clamp(v, 0.0, 1.0);
+        else if (field == "split") s.split = v >= 0.5;
         else if (field == "outer") s.outer = std::clamp(v, 0.1, 1.0);
         else if (field == "anti") s.anti = std::clamp(v, 0.0, 0.9);
         else if (field == "curve") s.curve = std::clamp(v, 0.2, 4.0);
         else if (field == "square") s.square = std::clamp(v, 0.0, 1.0);
-        else if (field == "shape") s.shape = StickSettings::Shape(std::clamp(int(std::lround(v)), 0, 2));
+        else if (field == "shape") s.shape = StickSettings::Shape(std::clamp(int(std::lround(v)), 0, 3));
         else if (field == "custom") s.custom = v >= 0.5;
         else return false;
         return true;
     }
     if (group == "l2" || group == "r2") {
         TriggerSettings &t = group == "l2" ? l2 : r2;
-        if (field == "inner") t.inner = std::clamp(v, 0.0, 0.9);
+        if (field == "inner") t.inner = std::clamp(v, 0.0, 1.0);
         else if (field == "outer") t.outer = std::clamp(v, 0.1, 1.0);
         else if (field == "anti") t.anti = std::clamp(v, 0.0, 0.9);
         else return false;
@@ -231,43 +289,52 @@ namespace Presets {
 
 QStringList ids()
 {
-    return {"default", "rocketleague", "shooter", "racing"};
+    return {"rocketleague", "freestyle", "worn"};
+}
+
+namespace {
+
+StickSettings stick(StickSettings::Shape shape, double inner, double outer, double curve, double square)
+{
+    StickSettings s;
+    s.shape = shape;
+    s.inner = s.innerY = inner;
+    s.radii = QList<double>(8, inner);
+    s.outer = outer;
+    s.curve = curve;
+    s.square = square;
+    return s;
+}
+
 }
 
 Profile make(const QString &id)
 {
     Profile p;
     p.preset = id;
-    if (id == "rocketleague") {
-        p.name = "Rocket League";
-        p.match = "RocketLeague.exe";
-        // Just enough deadzone to stop drift, full steer before the rim, and
-        // a square range so a diagonal is full steer and full pitch at once:
-        // half-flips, wavedashes, and boosting while turning hard.
-        p.left = {StickSettings::Circle, 0.05, 0.90, 0.0, 1.0, 1.0, false, StickSettings::defaultPoints()};
-        // The right stick only turns the camera, which wants no surprises.
-        p.right = {StickSettings::Circle, 0.08, 0.95, 0.0, 1.0, 0.0, false, StickSettings::defaultPoints()};
-        // Rocket League adds a 10% deadzone to both triggers on its own
-        // (TAInput.ini); starting at 10% cancels it, and full throttle
-        // arrives before the trigger bottoms out.
-        p.l2 = {0.02, 0.85, 0.10};
-        p.r2 = {0.02, 0.85, 0.10};
-    } else if (id == "shooter") {
-        p.name = "Shooter";
-        p.left = {StickSettings::Circle, 0.06, 0.95, 0.0, 1.0, 0.0, false, StickSettings::defaultPoints()};
-        // A gentle curve gives fine aim near the center and fast turns at the rim.
-        p.right = {StickSettings::Circle, 0.06, 0.95, 0.0, 1.6, 0.0, false, StickSettings::defaultPoints()};
-        p.l2 = {0.05, 0.60, 0.0};
-        p.r2 = {0.05, 0.60, 0.0};
-    } else if (id == "racing") {
-        p.name = "Racing";
-        // Cross keeps steering independent of how far up or down the stick sits.
-        p.left = {StickSettings::Cross, 0.03, 0.95, 0.0, 1.3, 0.0, false, StickSettings::defaultPoints()};
-        p.right = {StickSettings::Circle, 0.08, 0.95, 0.0, 1.0, 0.0, false, StickSettings::defaultPoints()};
-        p.l2 = {0.02, 0.98, 0.0};
-        p.r2 = {0.02, 0.98, 0.0};
+    // Rocket League adds a 10% deadzone to both triggers on its own
+    // (TAInput.ini); starting at 10% cancels it, and full throttle arrives
+    // before the trigger bottoms out.
+    p.l2 = p.r2 = {0.02, 0.85, 0.10};
+    // The right stick only turns the camera, which wants no surprises.
+    p.right = stick(StickSettings::Circle, 0.08, 0.95, 1.0, 0.0);
+    if (id == "freestyle") {
+        p.name = "Freestyle";
+        // A touch of curve for fine air roll and aerial corrections, with
+        // the rim still reaching full on diagonals.
+        p.left = stick(StickSettings::Circle, 0.05, 0.88, 1.25, 1.0);
+    } else if (id == "worn") {
+        p.name = "Worn stick";
+        // Older sticks drift further and stop short of the rim.
+        p.left = stick(StickSettings::Circle, 0.12, 0.82, 1.0, 1.0);
+        p.right = stick(StickSettings::Circle, 0.12, 0.90, 1.0, 0.0);
     } else {
-        p.preset = "default";
+        p.preset = "rocketleague";
+        p.name = "Rocket League";
+        // Just enough deadzone to stop drift, full steer before the rim,
+        // and full reach on diagonals: a diagonal is full steer and full
+        // pitch at once, for half-flips and turning while boosting.
+        p.left = stick(StickSettings::Circle, 0.05, 0.90, 1.0, 1.0);
     }
     return p;
 }

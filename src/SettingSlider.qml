@@ -3,8 +3,8 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// One profile value with what it does underneath. A drag is a single undo
-// step; arrow keys on a focused slider are one step each.
+// One profile value; what it does sits behind the info icon. A drag is a
+// single undo step; arrow keys on a focused slider are one step each.
 ColumnLayout {
     id: root
 
@@ -20,13 +20,15 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
+        spacing: 6
         Label {
             text: root.label
             color: "#c9c9cf"
             font.pixelSize: 13
             elide: Text.ElideRight
-            Layout.fillWidth: true
         }
+        InfoIcon { text: root.description }
+        Item { Layout.fillWidth: true }
         Label {
             text: root.format(slider.value)
             color: "#8b8b93"
