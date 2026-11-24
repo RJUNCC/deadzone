@@ -51,11 +51,13 @@ void Remapper::setProfile(const Profile &profile)
 {
     QMutexLocker lock(&m_mutex);
     m_profile = profile;
+    m_profileGeneration.fetch_add(1, std::memory_order_release);
 }
 
 LiveState Remapper::live() const
 {
     QMutexLocker lock(&m_mutex);
+    m_liveDirty.store(false, std::memory_order_relaxed);
     return m_live;
 }
 
@@ -305,16 +307,23 @@ void Remapper::setPhysical(int bit, bool down)
         m_physical &= ~(1u << bit);
 }
 
+const Profile &Remapper::readerProfile()
+{
+    const int generation = m_profileGeneration.load(std::memory_order_acquire);
+    if (generation != m_readerGeneration) {
+        QMutexLocker lock(&m_mutex);
+        m_readerProfile = m_profile;
+        m_readerGeneration = generation;
+    }
+    return m_readerProfile;
+}
+
 // Works out what the game should see from what is held, through the
 // profile's button map, and sends only what changed. Several buttons may
 // share a target; it stays pressed while any of them is held.
 void Remapper::updateVirtual()
 {
-    QList<int> map;
-    {
-        QMutexLocker lock(&m_mutex);
-        map = m_profile.buttons;
-    }
+    const QList<int> &map = readerProfile().buttons;
     quint32 next = 0;
     for (int bit = 0; bit < Profile::ButtonCount; ++bit)
         if (m_physical & (1u << bit)) {
@@ -428,11 +437,7 @@ void Remapper::noteReport(const timeval &time)
 // Applies the profile to the axes and sends one report to the virtual pad.
 void Remapper::flush()
 {
-    Profile profile;
-    {
-        QMutexLocker lock(&m_mutex);
-        profile = m_profile;
-    }
+    const Profile &profile = readerProfile();
     const QPointF leftRaw(m_raw[LX], m_raw[LY]), rightRaw(m_raw[RX], m_raw[RY]);
     const QPointF leftOut = Curves::stick(leftRaw, profile.left);
     const QPointF rightOut = Curves::stick(rightRaw, profile.right);
@@ -453,6 +458,8 @@ void Remapper::flush()
         QMutexLocker lock(&m_mutex);
         m_live = {leftRaw, leftOut, rightRaw, rightOut, m_raw[L2], l2Out, m_raw[R2], r2Out, m_gameButtons & 0x7fffu, m_rate};
     }
+    if (!m_liveDirty.exchange(true, std::memory_order_relaxed))
+        emit liveUpdated();
 
     if (m_virtual < 0) {
         m_pending.clear();

@@ -23,7 +23,7 @@ ColumnLayout {
         spacing: 6
         Label {
             text: root.label
-            color: "#c9c9cf"
+            color: theme.textSecondary
             font.pixelSize: 13
             elide: Text.ElideRight
         }
@@ -31,7 +31,7 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
         Label {
             text: root.format(slider.value)
-            color: "#8b8b93"
+            color: theme.muted
             font.pixelSize: 13
             font.features: { "tnum": 1 }
         }
@@ -43,7 +43,7 @@ ColumnLayout {
         Layout.topMargin: 2
         text: root.description
         wrapMode: Text.Wrap
-        color: "#76767e"
+        color: theme.faint
         font.pixelSize: 12
     }
 

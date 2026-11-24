@@ -1,6 +1,9 @@
 QT += core gui qml quick quickcontrols2 network
 
-CONFIG += c++20 release
+CONFIG += c++20 release qtquickcompiler
+# Link-time optimisation and -O2 keep the remapper path short.
+QMAKE_CXXFLAGS_RELEASE += -O2
+CONFIG += ltcg
 TARGET = deadzone
 TEMPLATE = app
 

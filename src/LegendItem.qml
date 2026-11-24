@@ -5,7 +5,7 @@ import QtQuick.Layouts
 // One key in a legend: a dot, a dash, or a dashed ring, and what it means.
 RowLayout {
     id: root
-    property color color: "#8b8b93"
+    property color color: theme.muted
     property string text
     property string mark: "dot"   // dot, line, or ring
     spacing: 5
@@ -37,7 +37,7 @@ RowLayout {
     }
     Label {
         text: root.text
-        color: "#8b8b93"
+        color: theme.muted
         font.pixelSize: 11
     }
 }

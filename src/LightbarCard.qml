@@ -18,9 +18,9 @@ Rectangle {
         qsTr("The current profile's color, so you can tell at a glance which one is on.")
     ]
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     ColumnLayout {
@@ -36,20 +36,20 @@ Rectangle {
                 text: qsTr("Controller")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             // What the lightbar is showing right now.
             Rectangle {
                 visible: root.light.mode !== 0
                 width: 16; height: 16; radius: 8
                 color: root.light.current
-                border.color: "#2a2a30"
+                border.color: theme.line
             }
             Item { Layout.fillWidth: true }
             Label {
                 readonly property string link: backend.bluetooth ? "Bluetooth" : "USB"
                 text: backend.reportRate > 0 ? qsTr("%1 · %2 reports a second").arg(link).arg(backend.reportRate) : link
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 13
             }
             InfoIcon {
@@ -63,7 +63,7 @@ Rectangle {
                               backend.batteryMinutes >= 60 ? qsTr("%1 h %2 min").arg(Math.floor(backend.batteryMinutes / 60)).arg(backend.batteryMinutes % 60)
                                                            : qsTr("%1 min").arg(backend.batteryMinutes))
                         : qsTr("Battery %1%").arg(backend.battery)
-                color: backend.battery >= 0 && backend.battery <= 20 && !backend.charging ? "#f87171" : "#c9c9cf"
+                color: backend.battery >= 0 && backend.battery <= 20 && !backend.charging ? "#f87171" : theme.textSecondary
                 font.pixelSize: 13
             }
         }
@@ -72,7 +72,7 @@ Rectangle {
             visible: !root.light.available
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#8b8b93"
+            color: theme.muted
             text: qsTr("This controller has no lightbar deadzone can set.")
         }
 
@@ -99,7 +99,7 @@ Rectangle {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: "#e4e4e7"
+                color: theme.text
                 text: qsTr("Only root can change the lightbar until deadzone adds a udev rule that lets you. It asks for your password once.")
             }
             Button {
@@ -128,7 +128,7 @@ Rectangle {
                     width: 30; height: 30; radius: 15
                     color: modelData
                     border.width: Qt.colorEqual(root.light.color, modelData) ? 3 : 1
-                    border.color: Qt.colorEqual(root.light.color, modelData) ? "#e4e4e7" : "#2a2a30"
+                    border.color: Qt.colorEqual(root.light.color, modelData) ? theme.text : theme.line
                     ToolTip.visible: tipArea.containsMouse && index === root.swatches.length
                     ToolTip.text: qsTr("Theme accent")
                     MouseArea {
@@ -145,7 +145,7 @@ Rectangle {
         RowLayout {
             visible: root.light.available && root.light.mode === 2
             Layout.fillWidth: true
-            Label { text: qsTr("Speed"); color: "#c9c9cf"; font.pixelSize: 13; Layout.preferredWidth: 90 }
+            Label { text: qsTr("Speed"); color: theme.textSecondary; font.pixelSize: 13; Layout.preferredWidth: 90 }
             Slider {
                 Layout.fillWidth: true
                 from: 0.02
@@ -155,7 +155,7 @@ Rectangle {
             }
             Label {
                 text: qsTr("%1 s per cycle").arg((1 / root.light.speed).toLocaleString(Qt.locale(), 'f', 1))
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 13
                 font.features: { "tnum": 1 }
             }
@@ -164,7 +164,7 @@ Rectangle {
         RowLayout {
             visible: root.light.available && root.light.mode !== 0
             Layout.fillWidth: true
-            Label { text: qsTr("Brightness"); color: "#c9c9cf"; font.pixelSize: 13; Layout.preferredWidth: 90 }
+            Label { text: qsTr("Brightness"); color: theme.textSecondary; font.pixelSize: 13; Layout.preferredWidth: 90 }
             Slider {
                 Layout.fillWidth: true
                 from: 0.05
@@ -174,14 +174,14 @@ Rectangle {
             }
             Label {
                 text: Math.round(root.light.brightness * 100) + "%"
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 13
                 font.features: { "tnum": 1 }
             }
         }
         RowLayout {
             Layout.fillWidth: true
-            Label { text: qsTr("Rumble"); color: "#c9c9cf"; font.pixelSize: 13; Layout.preferredWidth: 90 }
+            Label { text: qsTr("Rumble"); color: theme.textSecondary; font.pixelSize: 13; Layout.preferredWidth: 90 }
             Slider {
                 Layout.fillWidth: true
                 from: 0
@@ -192,7 +192,7 @@ Rectangle {
             }
             Label {
                 text: backend.rumble < 0.01 ? qsTr("Off") : Math.round(backend.rumble * 100) + "%"
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 13
                 font.features: { "tnum": 1 }
             }

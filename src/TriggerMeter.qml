@@ -16,14 +16,14 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Math.min(4, theme.radius)
-        color: "#121215"
-        border.color: "#2a2a30"
+        color: theme.sunken
+        border.color: theme.line
         clip: true
 
         Rectangle {
             width: parent.width * root.inner
             height: parent.height
-            color: "#34343c"
+            color: theme.lineStrong
         }
         Rectangle {
             x: parent.width * root.outer
@@ -41,7 +41,7 @@ Item {
             x: Math.min(parent.width - width, parent.width * root.raw)
             width: 2
             height: parent.height
-            color: "#e4e4e7"
+            color: theme.text
         }
     }
 }

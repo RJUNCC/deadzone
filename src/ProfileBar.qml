@@ -11,9 +11,9 @@ Rectangle {
     signal importRequested()
     readonly property var swatches: ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#a855f7", "#06b6d4", "#ec4899", "#ffffff"]
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
 
@@ -31,13 +31,13 @@ Rectangle {
                 text: qsTr("Profile")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             // The profile's color, flashed on the lightbar when switched to.
             Rectangle {
                 width: 22; height: 22; radius: 11
                 color: backend.profileColor
-                border.color: "#2a2a30"
+                border.color: theme.line
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
@@ -50,7 +50,7 @@ Rectangle {
                     id: colorMenu
                     y: parent.height + 6
                     padding: 8
-                    background: Rectangle { color: "#232328"; radius: Math.min(4, theme.radius); border.color: "#34343c" }
+                    background: Rectangle { color: theme.border; radius: Math.min(4, theme.radius); border.color: theme.lineStrong }
                     Row {
                         spacing: 6
                         Repeater {
@@ -60,7 +60,7 @@ Rectangle {
                                 width: 24; height: 24; radius: 12
                                 color: modelData
                                 border.width: Qt.colorEqual(backend.profileColor, modelData) ? 3 : 1
-                                border.color: Qt.colorEqual(backend.profileColor, modelData) ? "#e4e4e7" : "#2a2a30"
+                                border.color: Qt.colorEqual(backend.profileColor, modelData) ? theme.text : theme.line
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
@@ -154,7 +154,7 @@ Rectangle {
                 focusPolicy: Qt.NoFocus
                 onToggled: backend.comboSwitch = checked
             }
-            Label { text: qsTr("Switch profiles with PS + d-pad left or right"); color: "#c9c9cf"; font.pixelSize: 13 }
+            Label { text: qsTr("Switch profiles with PS + d-pad left or right"); color: theme.textSecondary; font.pixelSize: 13 }
             InfoIcon {
                 text: qsTr("Hold the PS button and press left or right on the d-pad to go to the previous or next profile, even in the middle of a match. The lightbar flashes the new profile's color. While PS is held the d-pad does not reach the game, and a PS press on its own still works as usual.")
             }

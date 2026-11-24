@@ -13,7 +13,7 @@ Rectangle {
     implicitHeight: 16
     radius: 8
     color: hover.hovered || pinned ? theme.accent : "transparent"
-    border.color: hover.hovered || pinned ? theme.accent : "#55555d"
+    border.color: hover.hovered || pinned ? theme.accent : theme.faint
 
     property bool pinned: false
 
@@ -23,7 +23,7 @@ Rectangle {
         font.pixelSize: 11
         font.weight: Font.Bold
         font.italic: true
-        color: hover.hovered || root.pinned ? theme.accentForeground : "#8b8b93"
+        color: hover.hovered || root.pinned ? theme.accentForeground : theme.muted
     }
 
     HoverHandler { id: hover; cursorShape: Qt.WhatsThisCursor }
@@ -36,13 +36,13 @@ Rectangle {
         contentItem: Label {
             text: root.text
             wrapMode: Text.Wrap
-            color: "#e4e4e7"
+            color: theme.text
             font.pixelSize: 13
             lineHeight: 1.15
         }
         background: Rectangle {
-            color: "#232328"
-            border.color: "#34343c"
+            color: theme.border
+            border.color: theme.lineStrong
             radius: Math.min(4, theme.radius)
         }
         onClosed: root.pinned = false

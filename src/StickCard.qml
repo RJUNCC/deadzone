@@ -20,9 +20,9 @@ Rectangle {
     readonly property bool splitCurve: { backend.revision; return backend.setting(side + ".splitCurve") >= 0.5 }
     readonly property bool measuring: backend.calibrating.startsWith(side + ".")
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: content.implicitHeight + 32
 
     readonly property var shapeDescriptions: [
@@ -42,7 +42,7 @@ Rectangle {
             text: root.title
             font.pixelSize: 16
             font.weight: Font.DemiBold
-            color: "#e4e4e7"
+            color: theme.text
         }
 
         RowLayout {
@@ -67,7 +67,7 @@ Rectangle {
                 Label {
                     Layout.alignment: Qt.AlignHCenter
                     text: qsTr("Out  X %1%  Y %2%").arg(Math.round(Math.abs(root.out.x) * 100)).arg(Math.round(Math.abs(root.out.y) * 100))
-                    color: "#8b8b93"
+                    color: theme.muted
                     font.pixelSize: 12
                     font.features: { "tnum": 1 }
                 }
@@ -86,7 +86,7 @@ Rectangle {
                 Label {
                     Layout.alignment: Qt.AlignHCenter
                     text: qsTr("Travel → output")
-                    color: "#8b8b93"
+                    color: theme.muted
                     font.pixelSize: 12
                 }
             }
@@ -96,7 +96,7 @@ Rectangle {
         Flow {
             Layout.fillWidth: true
             spacing: 14
-            LegendItem { color: "#8b8b93"; text: qsTr("Your stick") }
+            LegendItem { color: theme.muted; text: qsTr("Your stick") }
             LegendItem { color: theme.accent; text: qsTr("Sent to the game") }
             LegendItem { visible: root.dodge > 0; color: "#60a5fa"; mark: "ring"; text: qsTr("Flip threshold") }
             LegendItem { visible: root.splitCurve; color: theme.accent; mark: "line"; text: qsTr("Horizontal curve") }
@@ -148,7 +148,7 @@ Rectangle {
             spacing: 6
             Label {
                 text: qsTr("Shape")
-                color: "#c9c9cf"
+                color: theme.textSecondary
                 font.pixelSize: 13
             }
             InfoIcon { text: root.shapeDescriptions[root.shape] }
@@ -165,7 +165,7 @@ Rectangle {
             spacing: 6
             Label {
                 text: qsTr("Separate horizontal and vertical")
-                color: "#c9c9cf"
+                color: theme.textSecondary
                 font.pixelSize: 13
             }
             InfoIcon {
@@ -234,13 +234,13 @@ Rectangle {
                         text: parent.text
                         font.pixelSize: 12
                         font.weight: parent.active ? Font.DemiBold : Font.Normal
-                        color: parent.active ? theme.accentForeground : "#c9c9cf"
+                        color: parent.active ? theme.accentForeground : theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
                         radius: Math.min(4, theme.radius)
-                        color: parent.active ? theme.accent : parent.down ? "#34343c" : parent.hovered ? "#26262c" : "#1e1e23"
+                        color: parent.active ? theme.accent : parent.down ? theme.lineStrong : parent.hovered ? theme.hover : theme.raised
                     }
                     ToolTip.visible: hovered
                     ToolTip.delay: 300
@@ -261,7 +261,7 @@ Rectangle {
             spacing: 6
             Label {
                 text: qsTr("Shape of the response")
-                color: "#c9c9cf"
+                color: theme.textSecondary
                 font.pixelSize: 13
             }
             InfoIcon {
@@ -289,7 +289,7 @@ Rectangle {
             spacing: 6
             Label {
                 text: qsTr("Separate horizontal and vertical curves")
-                color: "#c9c9cf"
+                color: theme.textSecondary
                 font.pixelSize: 13
             }
             InfoIcon {
@@ -309,13 +309,13 @@ Rectangle {
             spacing: 6
             Label {
                 text: root.splitCurve ? qsTr("Horizontal curve") : qsTr("Response curve")
-                color: "#c9c9cf"
+                color: theme.textSecondary
                 font.pixelSize: 13
             }
             Item { Layout.fillWidth: true }
             Label {
                 text: { backend.revision; const id = backend.activeCurvePreset(root.side); return id.length > 0 ? qsTr("%1, drawn on the graph").arg(backend.curvePresetName(id)) : qsTr("Drawn on the graph") }
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 13
             }
             InfoIcon { text: qsTr("This curve is the yellow line on the graph above. Drag its round points to change it, pick another preset, or switch Shape of the response back to Curve to use a single number.") }

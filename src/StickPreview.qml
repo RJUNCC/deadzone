@@ -29,6 +29,10 @@ Item {
 
     Canvas {
         id: zones
+
+        // Canvases draw with theme colors, so they repaint on a theme switch.
+
+        Connections { target: theme; function onChanged() { zones.requestPaint() } }
         anchors.fill: parent
         renderStrategy: Canvas.Cooperative
 
@@ -59,12 +63,12 @@ Item {
             ctx.save()
             ctx.beginPath()
             ctx.arc(root.cx, root.cy, r - 1, 0, Math.PI * 2)
-            ctx.fillStyle = "#121215"
+            ctx.fillStyle = theme.sunken
             ctx.fill()
             ctx.clip()
 
             // Grid at quarter travel, so values can be read off by eye.
-            ctx.strokeStyle = "#1f1f24"
+            ctx.strokeStyle = theme.raised
             ctx.lineWidth = 1
             for (let i = 1; i < 4; ++i) {
                 ctx.beginPath()
@@ -83,7 +87,7 @@ Item {
             ctx.arc(root.cx, root.cy, r * root.outer, 0, Math.PI * 2, true)
             ctx.fill()
 
-            ctx.fillStyle = "#34343c"
+            ctx.fillStyle = theme.lineStrong
             if (root.shape === 2) {
                 ctx.fillRect(root.cx - r, root.cy - r * root.innerY, 2 * r, 2 * r * root.innerY)
                 ctx.fillRect(root.cx - r * root.innerX, root.cy - r, 2 * r * root.innerX, 2 * r)
@@ -116,7 +120,7 @@ Item {
                 ctx.setLineDash([])
             }
 
-            ctx.strokeStyle = "#2a2a30"
+            ctx.strokeStyle = theme.line
             ctx.lineWidth = 1
             ctx.beginPath()
             ctx.arc(root.cx, root.cy, r - 1, 0, Math.PI * 2)
@@ -137,15 +141,32 @@ Item {
 
     Rectangle {
         width: 10; height: 10; radius: 5
-        color: "#8b8b93"
+        color: theme.muted
         x: root.cx + root.raw.x * root.size / 2 - width / 2
         y: root.cy + root.raw.y * root.size / 2 - height / 2
+    }
+
+    // Sparks trail the output dot when the stick snaps across quickly.
+    Sparks {
+        id: sparks
+        anchors.fill: parent
+        color: root.accent
+        lifeSpan: 380
+        speed: 28
+        size: 8
+    }
+    property point lastOut: Qt.point(0, 0)
+    onOutChanged: {
+        const d = Math.hypot(out.x - lastOut.x, out.y - lastOut.y)
+        lastOut = out
+        if (d > 0.03 && theme.particles)
+            sparks.fire(cx + out.x * size / 2, cy + out.y * size / 2, Math.min(5, d * 30))
     }
 
     Rectangle {
         width: 14; height: 14; radius: 7
         color: root.accent
-        border.color: "#0e0e10"
+        border.color: theme.background
         border.width: 2
         x: root.cx + root.out.x * root.size / 2 - width / 2
         y: root.cy + root.out.y * root.size / 2 - height / 2
@@ -159,7 +180,7 @@ Item {
             readonly property real angle: index * Math.PI / 4
             readonly property real reach: root.radii[index]
             width: 14; height: 14; radius: 7
-            color: drag.pressed || drag.containsMouse ? root.accent : "#0e0e10"
+            color: drag.pressed || drag.containsMouse ? root.accent : theme.background
             border.color: root.accent
             border.width: 2
             x: root.cx + Math.cos(angle) * reach * root.size / 2 - width / 2

@@ -35,19 +35,23 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Math.min(4, theme.radius)
-        color: "#121215"
-        border.color: "#2a2a30"
+        color: theme.sunken
+        border.color: theme.line
     }
 
     Canvas {
         id: plot
+
+        // Canvases draw with theme colors, so they repaint on a theme switch.
+
+        Connections { target: theme; function onChanged() { plot.requestPaint() } }
         anchors.fill: parent
         renderStrategy: Canvas.Cooperative
 
         onPaint: {
             const ctx = getContext("2d")
             ctx.reset()
-            ctx.strokeStyle = "#1f1f24"
+            ctx.strokeStyle = theme.raised
             ctx.lineWidth = 1
             for (let i = 1; i < 4; ++i) {
                 ctx.beginPath()
@@ -56,14 +60,14 @@ Item {
                 ctx.stroke()
             }
             // The straight line is "what you push is what games get".
-            ctx.strokeStyle = "#2e2e35"
+            ctx.strokeStyle = theme.line
             ctx.setLineDash([4, 4])
             ctx.beginPath()
             ctx.moveTo(root.toX(0), root.toY(0)); ctx.lineTo(root.toX(1), root.toY(1))
             ctx.stroke()
             ctx.setLineDash([])
 
-            ctx.fillStyle = "#34343c"
+            ctx.fillStyle = theme.lineStrong
             ctx.globalAlpha = 0.5
             ctx.fillRect(root.toX(0), root.toY(1), root.inner * root.plotW, root.plotH)
             ctx.fillStyle = Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.08)
@@ -97,7 +101,7 @@ Item {
     Rectangle {
         width: 10; height: 10; radius: 5
         color: root.accent
-        border.color: "#0e0e10"
+        border.color: theme.background
         border.width: 2
         readonly property real travel: Math.min(1, root.live)
         x: root.toX(travel) - width / 2
@@ -110,7 +114,7 @@ Item {
             required property int index
             readonly property point p: root.points[index]
             width: 16; height: 16; radius: 8
-            color: drag.containsMouse || drag.pressed ? root.accent : "#0e0e10"
+            color: drag.containsMouse || drag.pressed ? root.accent : theme.background
             border.color: root.accent
             border.width: 2
             x: root.pointX(p) - width / 2

@@ -30,9 +30,9 @@ Rectangle {
     readonly property int pageWidth: Math.round((compact ? 440 : 600) * scale)
     readonly property int pageHeight: Math.round(((compact ? 270 : 390) + (history ? 100 : 0)) * scale)
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     ColumnLayout {
@@ -48,7 +48,7 @@ Rectangle {
                 text: qsTr("OBS overlay")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             InfoIcon {
                 text: qsTr("Shows your controller live on stream or in recordings: sticks, triggers, and buttons, as the game receives them. Deadzone serves it on this computer only, and it works with the window closed when deadzone runs in the background.")
@@ -57,7 +57,7 @@ Rectangle {
             Label {
                 visible: backend.overlayEnabled && backend.overlayError.length === 0
                 text: backend.overlayClients > 0 ? qsTr("%n overlay(s) connected", "", backend.overlayClients) : qsTr("Waiting for OBS")
-                color: backend.overlayClients > 0 ? "#4ade80" : "#8b8b93"
+                color: backend.overlayClients > 0 ? "#4ade80" : theme.muted
                 font.pixelSize: 13
             }
             Switch {
@@ -71,7 +71,7 @@ Rectangle {
             visible: backend.overlayEnabled && backend.overlayError.length > 0
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#ffb4b4"
+            color: (theme.light ? "#b42318" : "#ffb4b4")
             text: qsTr("Could not start the overlay on port %1: %2. Pick another port below.").arg(backend.overlayPort).arg(backend.overlayError)
         }
 
@@ -88,8 +88,8 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: 38
                     radius: Math.min(4, theme.radius)
-                    color: "#121215"
-                    border.color: "#2a2a30"
+                    color: theme.sunken
+                    border.color: theme.line
                     Label {
                         anchors.fill: parent
                         anchors.leftMargin: 12
@@ -97,7 +97,7 @@ Rectangle {
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideMiddle
                         text: root.url
-                        color: "#e4e4e7"
+                        color: theme.text
                         font.family: "monospace"
                         font.pixelSize: 13
                     }
@@ -121,7 +121,7 @@ Rectangle {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 12
                 text: qsTr("In OBS: Sources, +, Browser. Paste the address as the URL, and set Width to %1 and Height to %2.").arg(root.pageWidth).arg(root.pageHeight)
             }
@@ -131,7 +131,7 @@ Rectangle {
                 spacing: 16
                 RowLayout {
                     spacing: 6
-                    Label { text: qsTr("Layout"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Layout"); color: theme.textSecondary; font.pixelSize: 13 }
                     Segmented {
                         options: [qsTr("Full controller"), qsTr("Sticks and triggers")]
                         current: root.compact ? 1 : 0
@@ -140,7 +140,7 @@ Rectangle {
                 }
                 RowLayout {
                     spacing: 6
-                    Label { text: qsTr("Buttons"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Buttons"); color: theme.textSecondary; font.pixelSize: 13 }
                     Segmented {
                         options: ["PlayStation", "Xbox"]
                         current: root.xbox ? 1 : 0
@@ -154,28 +154,28 @@ Rectangle {
                 RowLayout {
                     spacing: 4
                     CheckBox { checked: root.raw; focusPolicy: Qt.NoFocus; onToggled: root.raw = checked }
-                    Label { text: qsTr("Show the physical stick too"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Show the physical stick too"); color: theme.textSecondary; font.pixelSize: 13 }
                 }
                 RowLayout {
                     spacing: 4
                     CheckBox { checked: root.trail; focusPolicy: Qt.NoFocus; onToggled: root.trail = checked }
-                    Label { text: qsTr("Stick trail"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Stick trail"); color: theme.textSecondary; font.pixelSize: 13 }
                     InfoIcon { text: qsTr("A fading line behind each stick showing the last half second, so flicks and wavedash inputs are easy to follow.") }
                 }
                 RowLayout {
                     spacing: 4
                     CheckBox { checked: root.history; focusPolicy: Qt.NoFocus; onToggled: root.history = checked }
-                    Label { text: qsTr("Button history"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Button history"); color: theme.textSecondary; font.pixelSize: 13 }
                     InfoIcon { text: qsTr("A strip underneath showing the last three seconds of jump, boost, powerslide, and trigger presses, so the timing of flips and resets is visible.") }
                 }
                 RowLayout {
                     spacing: 4
                     CheckBox { checked: root.profileName; focusPolicy: Qt.NoFocus; onToggled: root.profileName = checked }
-                    Label { text: qsTr("Show the profile name"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Show the profile name"); color: theme.textSecondary; font.pixelSize: 13 }
                 }
                 RowLayout {
                     spacing: 8
-                    Label { text: qsTr("Size"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Size"); color: theme.textSecondary; font.pixelSize: 13 }
                     Slider {
                         Layout.preferredWidth: 140
                         from: 0.5
@@ -184,11 +184,11 @@ Rectangle {
                         value: root.scale
                         onMoved: root.scale = value
                     }
-                    Label { text: Math.round(root.scale * 100) + "%"; color: "#8b8b93"; font.pixelSize: 13 }
+                    Label { text: Math.round(root.scale * 100) + "%"; color: theme.muted; font.pixelSize: 13 }
                 }
                 RowLayout {
                     spacing: 6
-                    Label { text: qsTr("Port"); color: "#c9c9cf"; font.pixelSize: 13 }
+                    Label { text: qsTr("Port"); color: theme.textSecondary; font.pixelSize: 13 }
                     TextField {
                         Layout.preferredWidth: 80
                         horizontalAlignment: Text.AlignHCenter
@@ -214,7 +214,7 @@ Rectangle {
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: "#8b8b93"
+                    color: theme.muted
                     font.pixelSize: 12
                     text: backend.inputRecording
                           ? qsTr("Recording your inputs: %1. Stop when the clip is done.").arg(Math.floor(backend.inputRecordingSeconds / 60) + ":" + String(backend.inputRecordingSeconds % 60).padStart(2, "0"))
@@ -242,7 +242,7 @@ Rectangle {
                     Label {
                         Layout.fillWidth: true
                         text: Qt.formatDateTime(modelData.when, Qt.locale().dateTimeFormat(Locale.ShortFormat))
-                        color: "#c9c9cf"
+                        color: theme.textSecondary
                         font.pixelSize: 13
                     }
                     Button {

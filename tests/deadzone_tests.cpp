@@ -999,6 +999,51 @@ private slots:
         QCOMPARE(theme.accentForeground(), QString("white"));
     }
 
+    void themeOmarchyFollowsTheDesktopPalette()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("theme");
+        QFile colors(dir.path() + "/theme/colors.toml");
+        QVERIFY(colors.open(QIODevice::WriteOnly));
+        colors.write("accent = \"#b26ac6\"\nbackground = \"#0d0a11\"\nforeground = \"#e3dcda\"\n");
+        colors.close();
+
+        Theme theme(dir.path(), nullptr, {}, dir.filePath("appearance.json"));
+        QCOMPARE(theme.name(), QString("omarchy"));
+        QCOMPARE(theme.background(), QString("#0d0a11"));
+        QCOMPARE(theme.text(), QString("#e3dcda"));
+        QVERIFY(!theme.light());
+        // Cards sit just above the background, and text shades step down.
+        QVERIFY(QColor(theme.surface()).lightness() > QColor(theme.background()).lightness());
+        QVERIFY(QColor(theme.muted()).lightness() < QColor(theme.textSecondary()).lightness());
+    }
+
+    void themePresetsSwitchAndPersist()
+    {
+        QTemporaryDir dir;
+        const QString settings = dir.filePath("appearance.json");
+        {
+            Theme theme(dir.path(), nullptr, {}, settings);
+            QSignalSpy changed(&theme, &Theme::changed);
+            theme.setName("paper");
+            QCOMPARE(changed.count(), 1);
+            QVERIFY(theme.light());
+            QCOMPARE(theme.accent(), QString("#2563eb"));
+            theme.setParticles(false);
+            // Without particles, cards are solid.
+            QCOMPARE(QColor(theme.card()).alpha(), 255);
+            theme.setAnimations(false);
+            theme.setName("not-a-theme");
+            QCOMPARE(theme.name(), QString("omarchy"));
+            theme.setName("ember");
+        }
+        Theme again(dir.path(), nullptr, {}, settings);
+        QCOMPARE(again.name(), QString("ember"));
+        QVERIFY(!again.animations());
+        QVERIFY(!again.particles());
+        QCOMPARE(again.themes().size(), 12);
+    }
+
     void themeFollowsHyprlandRounding()
     {
         QTemporaryDir dir;

@@ -18,9 +18,9 @@ Rectangle {
         .concat([{ value: 15, label: qsTr("L2, fully pressed") }, { value: 16, label: qsTr("R2, fully pressed") }])
     readonly property bool changed: map.some((t, i) => t !== i)
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     ColumnLayout {
@@ -36,7 +36,7 @@ Rectangle {
                 text: qsTr("Buttons")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             InfoIcon {
                 text: qsTr("What each button sends to the game, for this profile. Several buttons can send the same thing, and a button can press a trigger all the way, for example boost on R1. Rocket League's own bindings still apply on top. The overlay and flip analyzer show what the game receives, so they follow this.")
@@ -67,7 +67,7 @@ Rectangle {
                     Label {
                         Layout.preferredWidth: 86
                         text: root.names[index]
-                        color: "#c9c9cf"
+                        color: theme.textSecondary
                         font.pixelSize: 13
                     }
                     ComboBox {
@@ -76,7 +76,7 @@ Rectangle {
                         focusPolicy: Qt.NoFocus
                         Material.roundedScale: theme.radius
                         // A changed button wears the accent, so remaps stand out.
-                        Material.foreground: parent.target !== index ? theme.accent : "#e4e4e7"
+                        Material.foreground: parent.target !== index ? theme.accent : theme.text
                         font.pixelSize: 13
                         textRole: "label"
                         valueRole: "value"

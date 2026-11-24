@@ -81,9 +81,21 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent, 
     connect(&m_rescan, &QTimer::timeout, this, &Backend::rescan);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_rescan.start(); });
 
-    // The window shows the selected controller at display rate.
+    // The window hears about stick movement from the remapper as it happens,
+    // at most once a display frame. Steady 60 Hz sampling only runs while
+    // something needs it, so an idle background service never wakes up.
     m_poll.setInterval(16);
+    m_poll.setTimerType(Qt::PreciseTimer);
     connect(&m_poll, &QTimer::timeout, this, &Backend::pollLive);
+    m_liveThrottle.setSingleShot(true);
+    m_liveThrottle.setTimerType(Qt::PreciseTimer);
+    connect(&m_liveThrottle, &QTimer::timeout, this, &Backend::refreshLive);
+    m_liveShown.start();
+    connect(this, &Backend::recordingChanged, this, &Backend::updateSampling);
+    connect(this, &Backend::sessionChanged, this, &Backend::updateSampling);
+    connect(this, &Backend::calibrationChanged, this, &Backend::updateSampling);
+    connect(&m_overlay, &OverlayServer::clientsChanged, this, &Backend::updateSampling);
+    connect(this, &Backend::controllersChanged, this, &Backend::refreshLive);
 
     // A slow safety net for permission changes the watcher never sees.
     m_fallbackScan.setInterval(3000);
@@ -103,7 +115,6 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent, 
         refreshLaunchOptions();
         connect(&m_fallbackScan, &QTimer::timeout, this, &Backend::refreshLaunchOptions);
         m_watcher.addPath("/dev/input");
-        m_poll.start();
         m_fallbackScan.start();
         m_games.start();
         rescan();
@@ -1473,6 +1484,10 @@ void Backend::startWorker(const GamepadInfo &info)
         }
     });
     connect(worker.remapper, &Remapper::disconnected, this, [this] { m_rescan.start(); });
+    connect(worker.remapper, &Remapper::liveUpdated, this, [this, id] {
+        if (m_selected >= 0 && m_selected < m_devices.size() && m_devices.at(m_selected).id == id)
+            scheduleLive();
+    });
 
     m_workers.insert(id, worker);
     worker.thread->start(QThread::TimeCriticalPriority);
@@ -1502,12 +1517,50 @@ void Backend::restartWorkers()
     emit errorChanged();
 }
 
-void Backend::pollLive()
+void Backend::setDisplayRate(double hz)
+{
+    m_frameInterval = std::clamp(int(1000.0 / std::max(hz, 1.0)), 2, 33);
+}
+
+void Backend::scheduleLive()
+{
+    const qint64 since = m_liveShown.elapsed();
+    if (since >= m_frameInterval)
+        refreshLive();
+    else if (!m_liveThrottle.isActive())
+        m_liveThrottle.start(int(m_frameInterval - since));
+}
+
+void Backend::refreshLive()
 {
     LiveState state;
     if (m_selected >= 0 && m_selected < m_devices.size() && m_workers.contains(m_devices.at(m_selected).id))
         state = m_workers.value(m_devices.at(m_selected).id).remapper->live();
+    if (state.leftRaw == m_live.leftRaw && state.rightRaw == m_live.rightRaw && state.l2Raw == m_live.l2Raw
+        && state.r2Raw == m_live.r2Raw && state.leftOut == m_live.leftOut && state.rightOut == m_live.rightOut
+        && state.l2Out == m_live.l2Out && state.r2Out == m_live.r2Out && state.buttons == m_live.buttons
+        && state.rate == m_live.rate)
+        return;
+    m_live = state;
+    m_liveShown.restart();
+    m_overlayDirty = true;
+    emit liveChanged();
+}
 
+void Backend::updateSampling()
+{
+    const bool needed = m_inputRecording || m_recording || !m_calibration.key.isEmpty()
+                        || (m_overlay.running() && m_overlay.clients() > 0);
+    if (needed && !m_poll.isActive())
+        m_poll.start();
+    else if (!needed && m_poll.isActive())
+        m_poll.stop();
+}
+
+void Backend::pollLive()
+{
+    refreshLive();
+    const LiveState &state = m_live;
     if (m_inputRecording) {
         auto r = [](double v) { return std::round(v * 1000) / 1000; };
         m_inputSamples.append(QJsonArray{
@@ -1541,14 +1594,10 @@ void Backend::pollLive()
             emit calibrationChanged();
     }
 
-    if (state.leftRaw == m_live.leftRaw && state.rightRaw == m_live.rightRaw && state.l2Raw == m_live.l2Raw
-        && state.r2Raw == m_live.r2Raw && state.leftOut == m_live.leftOut && state.rightOut == m_live.rightOut
-        && state.l2Out == m_live.l2Out && state.r2Out == m_live.r2Out && state.buttons == m_live.buttons
-        && state.rate == m_live.rate)
-        return;
-    m_live = state;
-    emit liveChanged();
-    publishOverlay();
+    if (m_overlayDirty) {
+        m_overlayDirty = false;
+        publishOverlay();
+    }
 }
 
 // ---- Hiding the real controller from games ----

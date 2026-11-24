@@ -8,9 +8,9 @@ import QtQuick.Layouts
 Rectangle {
     id: root
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     // Re-evaluated whenever the profile or the game settings change.
@@ -32,7 +32,7 @@ Rectangle {
         property string help
         property real maximum: 1
         spacing: 6
-        Label { text: gameField.label; color: "#c9c9cf"; font.pixelSize: 13 }
+        Label { text: gameField.label; color: theme.textSecondary; font.pixelSize: 13 }
         InfoIcon { text: gameField.help }
         TextField {
             id: field
@@ -65,7 +65,7 @@ Rectangle {
         Label {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#d4d4d8"
+            color: theme.text
             text: insight.text
         }
         Button {
@@ -92,15 +92,15 @@ Rectangle {
                 text: "Rocket League"
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             Rectangle {
                 width: 8; height: 8; radius: 4
-                color: backend.gameRunning ? "#4ade80" : "#55555d"
+                color: backend.gameRunning ? "#4ade80" : theme.faint
             }
             Label {
                 text: backend.gameRunning ? qsTr("Running") : qsTr("Not running")
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 13
             }
             InfoIcon { text: { translator.language; backend.revision; return backend.presetTips(backend.profilePreset) } }
@@ -115,7 +115,7 @@ Rectangle {
                 focusPolicy: Qt.NoFocus
                 onToggled: backend.onlyWhileGame = checked
             }
-            Label { text: qsTr("Remap only while Rocket League runs"); color: "#c9c9cf"; font.pixelSize: 13 }
+            Label { text: qsTr("Remap only while Rocket League runs"); color: theme.textSecondary; font.pixelSize: 13 }
             InfoIcon { text: qsTr("Outside the game the controller works as it normally does, with no virtual pad, for the desktop and other games. Deadzone takes over the moment Rocket League starts.") }
             Item { Layout.preferredWidth: 24 }
             Switch {
@@ -124,7 +124,7 @@ Rectangle {
                 focusPolicy: Qt.NoFocus
                 onToggled: { backend.background = checked; checked = Qt.binding(() => backend.background) }
             }
-            Label { text: qsTr("Keep running without the window"); color: backend.backgroundAvailable ? "#c9c9cf" : "#55555d"; font.pixelSize: 13 }
+            Label { text: qsTr("Keep running without the window"); color: backend.backgroundAvailable ? theme.textSecondary : theme.faint; font.pixelSize: 13 }
             InfoIcon {
                 text: backend.backgroundAvailable
                       ? qsTr("Starts at login and keeps remapping after you close this window, with the settings saved here. Together with the switch on the left, you never have to open deadzone before playing.")
@@ -138,7 +138,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.topMargin: -6
             wrapMode: Text.Wrap
-            color: "#8b8b93"
+            color: theme.muted
             font.pixelSize: 12
             text: qsTr("Copy these from Settings, Controls in Rocket League. The game keeps them to itself, so deadzone uses what you type here to show how the two combine.")
         }

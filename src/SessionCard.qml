@@ -11,9 +11,9 @@ Rectangle {
     property int minutes: 5
     readonly property var durations: [2, 5, 10]
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     function clock(seconds) {
@@ -27,6 +27,8 @@ Rectangle {
         spacing: 4
         Canvas {
             id: canvas
+            // Canvases draw with theme colors, so they repaint on a theme switch.
+            Connections { target: theme; function onChanged() { canvas.requestPaint() } }
             Layout.preferredWidth: 150
             Layout.preferredHeight: 150
             Connections {
@@ -43,7 +45,7 @@ Rectangle {
                 ctx.save()
                 ctx.beginPath()
                 ctx.arc(width / 2, height / 2, width / 2 - 1, 0, Math.PI * 2)
-                ctx.fillStyle = "#121215"
+                ctx.fillStyle = theme.sunken
                 ctx.fill()
                 ctx.clip()
                 for (let i = 0; i < cells.length; ++i) {
@@ -53,7 +55,7 @@ Rectangle {
                     ctx.fillRect((i % n) * size, Math.floor(i / n) * size, size + 0.5, size + 0.5)
                 }
                 ctx.restore()
-                ctx.strokeStyle = "#2a2a30"
+                ctx.strokeStyle = theme.line
                 ctx.beginPath()
                 ctx.arc(width / 2, height / 2, width / 2 - 1, 0, Math.PI * 2)
                 ctx.stroke()
@@ -62,7 +64,7 @@ Rectangle {
         Label {
             Layout.alignment: Qt.AlignHCenter
             text: heat.title
-            color: "#8b8b93"
+            color: theme.muted
             font.pixelSize: 12
         }
     }
@@ -80,7 +82,7 @@ Rectangle {
                 text: qsTr("Session check")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             InfoIcon {
                 text: qsTr("Play normally while deadzone watches the controller, not the game. Afterwards it suggests changes from what it saw: how much the sticks drift at rest, how far they reach in each direction, where on the stick you spend your time, and how deep you press the triggers. It cannot tell whether a change makes you play better, only whether the settings fit how you move. Keep this window open while it records.")
@@ -96,7 +98,7 @@ Rectangle {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: "#c9c9cf"
+                color: theme.textSecondary
                 text: qsTr("Start it, then play a few matches or free play as you normally would. Include some moments of letting go of the sticks.")
             }
             Segmented {
@@ -126,7 +128,7 @@ Rectangle {
             Rectangle { width: 10; height: 10; radius: 5; color: "#ef4444" }
             Label {
                 text: qsTr("Watching: %1 of %2. Play normally.").arg(root.clock(backend.sessionElapsed)).arg(root.clock(backend.sessionDuration))
-                color: "#e4e4e7"
+                color: theme.text
                 font.features: { "tnum": 1 }
             }
             ProgressBar {
@@ -157,7 +159,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop
                     wrapMode: Text.Wrap
-                    color: "#8b8b93"
+                    color: theme.muted
                     font.pixelSize: 12
                     text: qsTr("Brighter means more time spent there in %1 of play. The center, where the stick rests, is left out of the scale.").arg(root.clock(backend.sessionElapsed))
                 }
@@ -197,14 +199,14 @@ Rectangle {
                         Label {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
-                            color: "#e4e4e7"
+                            color: theme.text
                             font.weight: Font.Medium
                             text: modelData.text
                         }
                         Label {
                             Layout.fillWidth: true
                             wrapMode: Text.Wrap
-                            color: "#8b8b93"
+                            color: theme.muted
                             font.pixelSize: 12
                             text: modelData.why
                         }

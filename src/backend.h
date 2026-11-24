@@ -100,6 +100,9 @@ class Backend : public QObject {
     Q_PROPERTY(double r2Out READ r2Out NOTIFY liveChanged)
 
 public:
+    // The window passes the display's refresh rate, so live updates reach
+    // a 240 Hz screen at 240 Hz and nothing is drawn faster than shown.
+    Q_INVOKABLE void setDisplayRate(double hz);
     // configPath lets tests run without touching the user's settings;
     // watchDevices false skips controllers, games, and the udev rule.
     explicit Backend(const QString &configPath = {}, bool watchDevices = true, QObject *parent = nullptr,
@@ -360,6 +363,14 @@ private:
     void stopWorker(const QString &id);
     void restartWorkers();
     void pollLive();
+    // Reads the selected controller's state and tells the window if it moved.
+    void refreshLive();
+    // A controller has new state: show it now, or on the next display frame
+    // if one was just shown.
+    void scheduleLive();
+    // The sampling timer runs only while something samples at a steady rate:
+    // input recording, the session check, measuring, or an open overlay.
+    void updateSampling();
     void finishCalibration();
     void readRule();
     void writeRules(const QStringList &ids, bool lightbar);
@@ -391,7 +402,10 @@ private:
     QList<GamepadInfo> m_devices;
     QHash<QString, Worker> m_workers;
     QFileSystemWatcher m_watcher;
-    QTimer m_rescan, m_poll, m_fallbackScan, m_games;
+    QTimer m_rescan, m_poll, m_fallbackScan, m_games, m_liveThrottle;
+    QElapsedTimer m_liveShown;
+    int m_frameInterval = 16;
+    bool m_overlayDirty = false;
 
     LiveState m_live;
 

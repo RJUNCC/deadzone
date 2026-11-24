@@ -25,9 +25,9 @@ Rectangle {
     readonly property var current: metrics[metric]
     readonly property var points: { backend.health; backend.flips; return backend.progress(current.key).slice(-30) }
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     function format(v) {
@@ -47,11 +47,11 @@ Rectangle {
                 text: qsTr("Progress")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             InfoIcon { text: root.current.help + " " + qsTr("Lower is better. Kept per controller, for the last 30 days you practised.") }
             Item { Layout.fillWidth: true }
-            Label { text: qsTr("Lower is better"); color: "#6b6b73"; font.pixelSize: 12 }
+            Label { text: qsTr("Lower is better"); color: theme.faint; font.pixelSize: 12 }
         }
 
         Flow {
@@ -70,13 +70,13 @@ Rectangle {
                     contentItem: Label {
                         text: parent.text
                         font.pixelSize: 12
-                        color: root.metric === parent.index ? theme.accentForeground : "#c9c9cf"
+                        color: root.metric === parent.index ? theme.accentForeground : theme.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
                         radius: Math.min(4, theme.radius)
-                        color: root.metric === parent.index ? theme.accent : parent.hovered ? "#26262c" : "#1e1e23"
+                        color: root.metric === parent.index ? theme.accent : parent.hovered ? theme.hover : theme.raised
                     }
                     onClicked: root.metric = index
                 }
@@ -87,12 +87,16 @@ Rectangle {
             visible: root.points.length === 0
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#8b8b93"
+            color: theme.muted
             text: qsTr("Nothing for this yet. It fills in as you play and practise, one point per day.")
         }
 
         Canvas {
             id: chart
+
+            // Canvases draw with theme colors, so they repaint on a theme switch.
+
+            Connections { target: theme; function onChanged() { chart.requestPaint() } }
             visible: root.points.length > 0
             Layout.fillWidth: true
             Layout.preferredHeight: 140
@@ -113,8 +117,8 @@ Rectangle {
                 const x = i => pad + (pts.length === 1 ? (width - pad) / 2 : i / (pts.length - 1) * (width - pad - 10))
                 const y = v => 10 + (1 - (v - lo) / (hi - lo)) * (height - 34)
                 ctx.font = "11px sans-serif"
-                ctx.fillStyle = "#6b6b73"
-                ctx.strokeStyle = "#232328"
+                ctx.fillStyle = theme.faint
+                ctx.strokeStyle = theme.border
                 for (const v of [lo, (lo + hi) / 2, hi]) {
                     ctx.beginPath(); ctx.moveTo(pad, y(v)); ctx.lineTo(width - 10, y(v)); ctx.stroke()
                     ctx.fillText(root.format(v), 0, y(v) + 4)
@@ -135,7 +139,7 @@ Rectangle {
             visible: root.points.length >= 2
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#e4e4e7"
+            color: theme.text
             text: {
                 const pts = root.points
                 if (pts.length < 2) return ""

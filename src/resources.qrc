@@ -1,6 +1,10 @@
 <RCC>
     <qresource prefix="/">
         <file alias="Main.qml">Main.qml</file>
+        <file alias="AppearancePopup.qml">AppearancePopup.qml</file>
+        <file alias="Ambient.qml">Ambient.qml</file>
+        <file alias="Sparks.qml">Sparks.qml</file>
+        <file alias="TabPage.qml">TabPage.qml</file>
         <file alias="overlay.html">overlay.html</file>
         <file alias="StickCard.qml">StickCard.qml</file>
         <file alias="StickPreview.qml">StickPreview.qml</file>

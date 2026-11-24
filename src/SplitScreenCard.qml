@@ -14,9 +14,9 @@ Rectangle {
     readonly property bool complete: hidden && backend.steamInputOff && backend.launchReady && (running || backend.active)
     property bool expanded: !complete
 
-    color: complete && !expanded ? "#121a14" : "#1d1a10"
+    color: complete && !expanded ? Qt.tint(theme.surface, "#1a22c55e") : Qt.tint(theme.surface, "#1feab308")
     radius: theme.radius
-    border.color: complete && !expanded ? "#1f4d2c" : Qt.darker(theme.accent, 2.2)
+    border.color: complete && !expanded ? Qt.tint(theme.surface, "#6622c55e") : Qt.tint(theme.surface, Qt.rgba(Qt.color(theme.accent).r, Qt.color(theme.accent).g, Qt.color(theme.accent).b, 0.45))
     implicitHeight: column.implicitHeight + 28
 
     component Step: RowLayout {
@@ -36,7 +36,7 @@ Rectangle {
             Label {
                 anchors.centerIn: parent
                 text: step.done ? "✓" : step.number
-                color: step.done ? "#0e0e10" : theme.accent
+                color: step.done ? theme.background : theme.accent
                 font.pixelSize: 12
                 font.weight: Font.Bold
             }
@@ -47,7 +47,7 @@ Rectangle {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: step.done ? "#8b8b93" : "#e4e4e7"
+                color: step.done ? theme.muted : theme.text
                 font.weight: Font.Medium
                 text: step.title
             }
@@ -55,7 +55,7 @@ Rectangle {
                 visible: step.detail.length > 0
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: "#8b8b93"
+                color: theme.muted
                 font.pixelSize: 12
                 text: step.detail
             }
@@ -104,7 +104,7 @@ Rectangle {
             visible: root.expanded
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#d4d4d8"
+            color: theme.text
             text: qsTr("Deadzone gives the game a virtual Xbox pad with your settings. But Linux has no way to hide the real controller from other programs: Steam still lists it, silent while deadzone holds it, and makes it player 1. Your input then arrives as player 2, so the controller seems dead and Start opens split screen. These steps tell Steam and the game to look only at deadzone's pad.")
         }
 
@@ -135,7 +135,7 @@ Rectangle {
                     focusPolicy: Qt.NoFocus
                     onToggled: backend.steamInputOff = checked
                 }
-                Label { text: qsTr("Done"); color: "#c9c9cf" }
+                Label { text: qsTr("Done"); color: theme.textSecondary }
             }
         }
 
@@ -155,15 +155,15 @@ Rectangle {
                     Layout.fillWidth: true
                     implicitHeight: launchText.implicitHeight + 16
                     radius: Math.min(4, theme.radius)
-                    color: "#121215"
-                    border.color: "#2a2a30"
+                    color: theme.sunken
+                    border.color: theme.line
                     Label {
                         id: launchText
                         anchors.fill: parent
                         anchors.margins: 8
                         wrapMode: Text.WrapAnywhere
                         text: backend.suggestedLaunch
-                        color: "#e4e4e7"
+                        color: theme.text
                         font.family: "monospace"
                         font.pixelSize: 12
                     }
@@ -193,7 +193,7 @@ Rectangle {
                     id: applyResult
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: text.length > 0 ? "#ffb4b4" : "#8b8b93"
+                    color: text.length > 0 ? (theme.light ? "#b42318" : "#ffb4b4") : theme.muted
                     font.pixelSize: 12
                     text: ""
                     Binding on text {
@@ -207,7 +207,7 @@ Rectangle {
                 visible: !backend.launchReady && backend.launchOptions.length > 0
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                color: "#6b6b73"
+                color: theme.faint
                 font.pixelSize: 12
                 text: qsTr("Now: %1").arg(backend.launchOptions)
             }
@@ -231,7 +231,7 @@ Rectangle {
             visible: root.expanded
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#8b8b93"
+            color: theme.muted
             font.pixelSize: 12
             text: qsTr("Restart Rocket League after steps 2 and 3. To go back to the controller on its own, turn Steam Input back on and remove the SDL_GAMECONTROLLER_IGNORE_DEVICES part from the launch options.")
         }

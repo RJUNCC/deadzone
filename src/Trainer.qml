@@ -30,7 +30,7 @@ Rectangle {
 
     readonly property point stick: side === "left" ? backend.leftOut : backend.rightOut
 
-    color: "#0e0e10"
+    color: theme.background
 
     function directionName(i) {
         return [qsTr("right"), qsTr("down-right"), qsTr("down"), qsTr("down-left"),
@@ -131,7 +131,7 @@ Rectangle {
                 text: qsTr("Precision trainer")
                 font.pixelSize: 22
                 font.weight: Font.Bold
-                color: "#e4e4e7"
+                color: theme.text
             }
             Item { Layout.fillWidth: true }
             Segmented {
@@ -169,14 +169,14 @@ Rectangle {
                 Rectangle {
                     anchors.fill: parent
                     radius: width / 2
-                    color: "#121215"
-                    border.color: "#2a2a30"
+                    color: theme.sunken
+                    border.color: theme.line
                 }
                 Rectangle {
                     anchors.centerIn: parent
                     width: arena.width * 0.4; height: width; radius: width / 2
                     color: "transparent"
-                    border.color: root.phase === "center" ? theme.accent : "#1f1f24"
+                    border.color: root.phase === "center" ? theme.accent : theme.raised
                     border.width: root.phase === "center" ? 2 : 1
                 }
                 Rectangle {
@@ -186,13 +186,13 @@ Rectangle {
                     x: arena.r + Math.cos(t.angle) * t.reach * arena.r - width / 2
                     y: arena.r + Math.sin(t.angle) * t.reach * arena.r - height / 2
                     color: root.enteredAt >= 0 ? Qt.rgba(0.29, 0.87, 0.5, 0.45) : Qt.rgba(1, 1, 1, 0.08)
-                    border.color: root.enteredAt >= 0 ? "#4ade80" : "#e4e4e7"
+                    border.color: root.enteredAt >= 0 ? "#4ade80" : theme.text
                     border.width: 2
                 }
                 Rectangle {
                     width: 16; height: 16; radius: 8
                     color: theme.accent
-                    border.color: "#0e0e10"
+                    border.color: theme.background
                     border.width: 2
                     x: arena.r + root.stick.x * arena.r - width / 2
                     y: arena.r + root.stick.y * arena.r - height / 2
@@ -215,7 +215,7 @@ Rectangle {
                     visible: root.phase === "intro"
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: "#d4d4d8"
+                    color: theme.text
                     lineHeight: 1.2
                     text: root.mode === "flick"
                           ? qsTr("Flick: a target appears near the rim in one of eight directions. Let go of the stick, then flick into the target as fast and clean as you can, the way you set up flips, half-flips, and wavedashes. %1 targets, two in each direction.").arg(root.count)
@@ -224,13 +224,13 @@ Rectangle {
                 Label {
                     visible: root.phase === "center" || root.phase === "target"
                     text: qsTr("Target %1 of %2").arg(root.index + 1).arg(root.count)
-                    color: "#e4e4e7"
+                    color: theme.text
                     font.pixelSize: 18
                 }
                 Label {
                     visible: root.phase === "center" || root.phase === "target"
                     text: qsTr("Overshoots: %1").arg(root.misses)
-                    color: "#8b8b93"
+                    color: theme.muted
                 }
 
                 ColumnLayout {
@@ -238,7 +238,7 @@ Rectangle {
                     spacing: 6
                     Label {
                         text: qsTr("%1 ms on average").arg(Math.round(root.average))
-                        color: "#e4e4e7"
+                        color: theme.text
                         font.pixelSize: 26
                         font.weight: Font.Bold
                     }
@@ -250,13 +250,13 @@ Rectangle {
                     }
                     Label {
                         text: qsTr("%n overshoot(s)", "", root.misses)
-                        color: "#c9c9cf"
+                        color: theme.textSecondary
                     }
                     Label {
                         visible: root.mode === "flick"
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                        color: "#c9c9cf"
+                        color: theme.textSecondary
                         text: {
                             let slowest = -1, worst = -1
                             for (let i = 0; i < 8; ++i) {
@@ -295,7 +295,7 @@ Rectangle {
                     Label {
                         visible: progress.history.length >= 2
                         text: qsTr("Your last %n run(s); lower is faster.", "", progress.history.length)
-                        color: "#6b6b73"
+                        color: theme.faint
                         font.pixelSize: 12
                     }
                 }
@@ -316,7 +316,7 @@ Rectangle {
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: "#6b6b73"
+                    color: theme.faint
                     font.pixelSize: 12
                     text: qsTr("It reads what the game receives, so your deadzone and curve count too: try a profile change, then run it again. Space starts, Esc closes.")
                 }

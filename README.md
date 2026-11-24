@@ -133,6 +133,7 @@ The window has four tabs: Tune, Rocket League, Practice, and Controller.
 | H | Hide the real controller from games |
 | L | Next lightbar mode |
 | T | Open the precision trainer |
+| A | Themes, animations, and particles |
 | PS + ← → (on the controller) | Previous or next profile |
 | R | Reset the profile to its preset |
 | Esc | Stop measuring |
@@ -166,6 +167,32 @@ walks through the fix and ticks off each step:
    closed (keeping a backup of the file).
 4. **Keep running without the window** and **Remap only while Rocket League
    runs**, because after step 3 the game only sees Deadzone's pad.
+
+## Appearance
+
+Press **A**, or the three dots at the top right, to pick a theme. **Omarchy**
+follows the desktop theme's background, text, and accent, and changes with
+it; the other eleven (Graphite, Midnight, Violet, Sakura, Crimson, Ember,
+Forest, Lagoon, Mono, Paper, and Sand) are fixed. Two switches sit below:
+
+- **Animations**: tabs glide in, mouse-wheel scrolling eases, choices slide,
+  and themes fade into each other.
+- **Particles**: soft motes drift behind the cards, sparks trail the stick
+  when it snaps across, and each flip gets a burst. They pause whenever the
+  window isn't focused, so they never cost the game a frame.
+
+The choice is saved in `~/.config/deadzone/appearance.json`.
+
+## Performance
+
+The remapper reads the controller on its own real-time thread, applies the
+profile without copying it on every report, and sends only the axes that
+changed, so it adds next to nothing on top of the controller's own report
+interval. The window hears about stick movement as it happens and redraws
+at most once per display refresh, at 240 Hz on a 240 Hz screen. Steady
+sampling only runs while something records or an overlay is open, so the
+background service otherwise wakes only for controller input and its slow
+checks for new controllers and for Rocket League.
 
 ## Without the window
 

@@ -24,9 +24,9 @@ Rectangle {
     }
     function average(list) { return list.reduce((a, b) => a + b, 0) / Math.max(1, list.length) }
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     function direction(key) {
@@ -57,13 +57,13 @@ Rectangle {
                 text: qsTr("Flip analyzer")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             InfoIcon {
                 text: qsTr("Every time you press jump twice within a second and a half, deadzone times the gap between the presses to the millisecond and notes where the left stick was, as the game received it. Past your Dodge Deadzone that is a flip; inside it, a double jump. After a back flip, pushing the stick forward within 0.6 seconds counts as a half-flip cancel; after a forward diagonal, pulling back counts as a speed flip cancel. It watches the controller, not the game, so it cannot tell whether a cancel worked, and it also counts presses on the ground.")
             }
             Item { Layout.fillWidth: true }
-            Label { text: qsTr("Jump button"); color: "#c9c9cf"; font.pixelSize: 13 }
+            Label { text: qsTr("Jump button"); color: theme.textSecondary; font.pixelSize: 13 }
             Segmented {
                 options: ["✕", "○", "□", "△", "L1", "R1"]
                 current: backend.jumpButton
@@ -83,7 +83,7 @@ Rectangle {
             visible: root.last === null
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#8b8b93"
+            color: theme.muted
             text: qsTr("Do some flips in free play or a match and they show up here. Keep this window open, or the background service running.")
         }
 
@@ -92,8 +92,42 @@ Rectangle {
             visible: root.last !== null
             spacing: 2
             Label {
+                id: flipTitle
                 text: root.last ? root.describe(root.last) : ""
-                color: "#e4e4e7"
+                // A burst of stars from the name of each new flip.
+                Sparks {
+                    id: flipSparks
+                    anchors.fill: parent
+                    source: "qrc:///particleresources/star.png"
+                    lifeSpan: 900
+                    speed: 160
+                    size: 14
+                    gravity: 120
+                }
+                transform: Scale {
+                    id: flipPop
+                    origin.x: 0
+                    origin.y: flipTitle.height / 2
+                }
+                SequentialAnimation {
+                    id: popAnimation
+                    NumberAnimation { target: flipPop; properties: "xScale,yScale"; to: 1.08; duration: 90; easing.type: Easing.OutCubic }
+                    NumberAnimation { target: flipPop; properties: "xScale,yScale"; to: 1; duration: 260; easing.type: Easing.OutBack }
+                }
+                Connections {
+                    target: backend
+                    property real lastSeen: -1
+                    function onFlipsChanged() {
+                        const f = backend.flips.length > 0 ? backend.flips[0] : null
+                        if (!f || f.t === undefined || f.t === lastSeen)
+                            return
+                        lastSeen = f.t
+                        if (theme.animations)
+                            popAnimation.restart()
+                        flipSparks.fire(flipTitle.implicitWidth / 2, flipTitle.height / 2, f.directional ? 36 : 18)
+                    }
+                }
+                color: theme.text
                 font.pixelSize: 20
                 font.weight: Font.DemiBold
             }
@@ -106,7 +140,7 @@ Rectangle {
                         parts.push(qsTr("%1° off the diagonal").arg(root.last.offDiagonal.toLocaleString(Qt.locale(), 'f', 1)))
                     return parts.join(" · ")
                 }
-                color: "#8b8b93"
+                color: theme.muted
             }
             Label {
                 visible: root.last !== null && root.last.cancel !== undefined
@@ -116,7 +150,7 @@ Rectangle {
                                                             : qsTr("Speed flip cancel %1 ms after the flip, %2° from straight back"))
                            .arg(Math.round(root.last.cancel)).arg(Math.round(root.last.cancelOff))
                 }
-                color: "#8b8b93"
+                color: theme.muted
             }
         }
 
@@ -137,8 +171,8 @@ Rectangle {
                 delegate: ColumnLayout {
                     required property var modelData
                     spacing: 0
-                    Label { text: modelData[0]; color: "#8b8b93"; font.pixelSize: 12 }
-                    Label { text: modelData[1]; color: "#e4e4e7"; font.pixelSize: 16; font.weight: Font.DemiBold }
+                    Label { text: modelData[0]; color: theme.muted; font.pixelSize: 12 }
+                    Label { text: modelData[1]; color: theme.text; font.pixelSize: 16; font.weight: Font.DemiBold }
                 }
             }
         }
@@ -165,7 +199,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 10
                     Rectangle { Layout.alignment: Qt.AlignTop; Layout.topMargin: 4; width: 10; height: 10; radius: 5; color: theme.accent }
-                    Label { Layout.fillWidth: true; wrapMode: Text.Wrap; color: "#d4d4d8"; text: modelData }
+                    Label { Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.text; text: modelData }
                 }
             }
         }
@@ -180,13 +214,13 @@ Rectangle {
                 delegate: RowLayout {
                     required property var modelData
                     Layout.fillWidth: true
-                    Label { Layout.preferredWidth: 260; text: root.describe(modelData, true); color: "#c9c9cf"; font.pixelSize: 13; elide: Text.ElideRight }
-                    Label { Layout.preferredWidth: 80; text: qsTr("%1 ms").arg(Math.round(modelData.gap)); color: "#8b8b93"; font.pixelSize: 13 }
+                    Label { Layout.preferredWidth: 260; text: root.describe(modelData, true); color: theme.textSecondary; font.pixelSize: 13; elide: Text.ElideRight }
+                    Label { Layout.preferredWidth: 80; text: qsTr("%1 ms").arg(Math.round(modelData.gap)); color: theme.muted; font.pixelSize: 13 }
                     Label {
                         visible: modelData.directional
                         text: modelData.diagonal ? qsTr("%1% tilt, %2° off").arg(Math.round(modelData.tilt * 100)).arg(modelData.offDiagonal.toLocaleString(Qt.locale(), 'f', 1))
                                                  : qsTr("%1% tilt").arg(Math.round(modelData.tilt * 100))
-                        color: "#8b8b93"
+                        color: theme.muted
                         font.pixelSize: 13
                     }
                     Item { Layout.fillWidth: true }

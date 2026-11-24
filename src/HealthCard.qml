@@ -11,9 +11,9 @@ Rectangle {
     readonly property var leftPoints: entries.filter(e => e.leftDrift >= 0)
     readonly property var rightPoints: entries.filter(e => e.rightDrift >= 0)
 
-    color: "#17171a"
+    color: theme.card
     radius: theme.radius
-    border.color: "#232328"
+    border.color: theme.border
     implicitHeight: column.implicitHeight + 32
 
     function latest(points, key) {
@@ -33,7 +33,7 @@ Rectangle {
                 text: qsTr("Controller health")
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
-                color: "#e4e4e7"
+                color: theme.text
             }
             InfoIcon {
                 text: qsTr("Drift is how far a stick wanders while you are not touching it. It grows as a stick wears. Every session check and Measure drift adds a point here, kept per controller, so you can see when a stick starts to go.")
@@ -47,12 +47,16 @@ Rectangle {
             visible: root.leftPoints.length + root.rightPoints.length === 0
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#8b8b93"
+            color: theme.muted
             text: qsTr("Nothing measured yet. Run a session check, or Measure drift on a stick, to start tracking.")
         }
 
         Canvas {
             id: chart
+
+            // Canvases draw with theme colors, so they repaint on a theme switch.
+
+            Connections { target: theme; function onChanged() { chart.requestPaint() } }
             visible: root.leftPoints.length + root.rightPoints.length > 0
             Layout.fillWidth: true
             Layout.preferredHeight: 120
@@ -75,8 +79,8 @@ Rectangle {
                 const pad = 26
                 const x = t => pad + (t - t0) / (t1 - t0) * (width - pad - 8)
                 const y = v => 8 + (1 - v / top) * (height - 24)
-                ctx.strokeStyle = "#232328"
-                ctx.fillStyle = "#6b6b73"
+                ctx.strokeStyle = theme.border
+                ctx.fillStyle = theme.faint
                 ctx.font = "11px sans-serif"
                 for (let i = 0; i <= 2; ++i) {
                     const v = top * i / 2
@@ -108,7 +112,7 @@ Rectangle {
             visible: backend.healthTrend.length > 0
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            color: "#e4e4e7"
+            color: theme.text
             text: backend.healthTrend
         }
     }

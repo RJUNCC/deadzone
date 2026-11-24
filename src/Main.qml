@@ -11,18 +11,43 @@ ApplicationWindow {
     minimumHeight: 640
     visible: true
     title: "Deadzone"
-    color: "#0e0e10"
+    color: theme.background
 
-    Material.theme: Material.Dark
+    Material.theme: theme.light ? Material.Light : Material.Dark
+    Material.background: theme.surface
+    Material.foreground: theme.text
     Material.accent: theme.accent
     Material.roundedScale: theme.radius
 
     property bool helpVisible: false
+    // A theme picked while animations are on is applied once the old look
+    // has been captured, so it can fade into the new one.
+    property string pendingTheme: ""
+    function pickTheme(id) {
+        if (id === theme.name)
+            return
+        if (!theme.animations) {
+            theme.name = id
+            return
+        }
+        themeSnapshot.scheduleUpdate()
+        themeSnapshot.opacity = 1
+        themeSnapshot.visible = true
+        pendingTheme = id
+    }
+    onFrameSwapped: {
+        if (pendingTheme === "")
+            return
+        theme.name = pendingTheme
+        pendingTheme = ""
+        themeFade.restart()
+    }
     property bool showDescriptions: false
     property bool trainerVisible: false
     // Single-key shortcuts stay out of the way while a text field has focus.
     readonly property bool typing: (activeFocusItem !== null && activeFocusItem.hasOwnProperty("cursorPosition")) || trainerVisible
 
+    Shortcut { sequence: "A"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: appearance.opened ? appearance.close() : appearance.open() }
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible || backend.calibrating.length > 0; onActivated: { win.helpVisible = false; backend.cancelCalibration() } }
     Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: Qt.quit() }
@@ -50,6 +75,7 @@ ApplicationWindow {
         ["H", qsTr("Hide the real controller from games")],
         ["L", qsTr("Next lightbar mode")],
         ["T", qsTr("Open the precision trainer")],
+        ["A", qsTr("Themes, animations, and particles")],
         ["PS + ← →", qsTr("Previous or next profile, from the controller")],
         ["R", qsTr("Reset the profile to its preset")],
         ["Esc", qsTr("Stop measuring")],
@@ -65,7 +91,18 @@ ApplicationWindow {
 
     // Right-to-left languages mirror the window; the Translator sets the
     // application's layout direction.
+    // Live updates are paced to the display: 240 a second on a 240 Hz screen.
+    readonly property real refreshRate: screen && screen.refreshRate > 0 ? screen.refreshRate : 60
+    onRefreshRateChanged: backend.setDisplayRate(refreshRate)
+    Component.onCompleted: backend.setDisplayRate(refreshRate)
+
+    Ambient {
+        anchors.fill: parent
+        running: (win.active || win.previewWithoutController) && win.visibility !== Window.Minimized
+    }
+
     Item {
+        id: content
         anchors.fill: parent
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
@@ -85,7 +122,7 @@ ApplicationWindow {
                     text: "Deadzone"
                     font.pixelSize: 22
                     font.weight: Font.Bold
-                    color: "#e4e4e7"
+                    color: theme.text
                 }
                 ComboBox {
                     Layout.preferredWidth: 340
@@ -102,13 +139,58 @@ ApplicationWindow {
                           : backend.remapping ? qsTr("Games see a virtual Xbox 360 pad")
                           : backend.active ? qsTr("Waiting for Rocket League to start")
                                            : qsTr("Off: games see the controller as-is")
-                    color: backend.active ? "#c9c9cf" : "#8b8b93"
+                    color: backend.active ? theme.textSecondary : theme.muted
                     font.pixelSize: 13
                 }
                 Switch {
+                    id: activeSwitch
                     checked: backend.active
                     focusPolicy: Qt.NoFocus
                     onToggled: backend.active = checked
+                    // A little light as remapping comes on.
+                    Sparks {
+                        id: activeSparks
+                        anchors.fill: parent
+                        lifeSpan: 600
+                        speed: 90
+                        size: 9
+                    }
+                    Connections {
+                        target: backend
+                        function onActiveChanged() {
+                            if (backend.active)
+                                activeSparks.fire(activeSwitch.width * 0.7, activeSwitch.height / 2, 26)
+                        }
+                    }
+                }
+                // Appearance: three dots in the theme's own colors.
+                ToolButton {
+                    id: appearanceButton
+                    focusPolicy: Qt.NoFocus
+                    implicitWidth: 40
+                    implicitHeight: 40
+                    hoverEnabled: true
+                    onClicked: appearance.opened ? appearance.close() : appearance.open()
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: qsTr("Appearance (A)")
+                    contentItem: Item {
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 3
+                            Repeater {
+                                model: [theme.accent, theme.textSecondary, theme.lineStrong]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    width: 7; height: 7; radius: 3.5
+                                    color: modelData
+                                    y: appearanceButton.hovered && theme.animations ? (index === 1 ? -2 : 1) : 0
+                                    Behavior on y { NumberAnimation { duration: 160; easing.type: Easing.OutBack } }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -120,15 +202,15 @@ ApplicationWindow {
                 Layout.rightMargin: 20
                 implicitHeight: errorText.implicitHeight + 20
                 radius: theme.radius
-                color: "#3a1418"
-                border.color: "#6b2028"
+                color: Qt.tint(theme.surface, "#38ef4444")
+                border.color: Qt.tint(theme.surface, "#80ef4444")
                 Label {
                     id: errorText
                     anchors.fill: parent
                     anchors.margins: 10
                     text: backend.error
                     wrapMode: Text.Wrap
-                    color: "#ffb4b4"
+                    color: (theme.light ? "#b42318" : "#ffb4b4")
                 }
             }
 
@@ -140,8 +222,8 @@ ApplicationWindow {
                 Layout.rightMargin: 20
                 implicitHeight: deadRow.implicitHeight + 20
                 radius: theme.radius
-                color: "#3a1418"
-                border.color: "#6b2028"
+                color: Qt.tint(theme.surface, "#38ef4444")
+                border.color: Qt.tint(theme.surface, "#80ef4444")
                 RowLayout {
                     id: deadRow
                     anchors.fill: parent
@@ -150,7 +232,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                        color: "#ffb4b4"
+                        color: (theme.light ? "#b42318" : "#ffb4b4")
                         text: qsTr("Rocket League is running and set to ignore your real controller, but deadzone is not remapping, so the game has no controller at all.")
                     }
                     Button {
@@ -170,8 +252,8 @@ ApplicationWindow {
                 Layout.rightMargin: 20
                 implicitHeight: setupNotice.implicitHeight + 20
                 radius: theme.radius
-                color: "#1d1a10"
-                border.color: Qt.darker(theme.accent, 2.2)
+                color: Qt.tint(theme.surface, "#1feab308")
+                border.color: Qt.tint(theme.surface, Qt.rgba(Qt.color(theme.accent).r, Qt.color(theme.accent).g, Qt.color(theme.accent).b, 0.45))
                 RowLayout {
                     id: setupNotice
                     anchors.fill: parent
@@ -180,7 +262,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                        color: "#e4e4e7"
+                        color: theme.text
                         text: qsTr("Rocket League is not set up to use deadzone's controller yet, so it may see two controllers.")
                     }
                     Button {
@@ -200,8 +282,8 @@ ApplicationWindow {
                 Layout.rightMargin: 20
                 implicitHeight: noticeRow.implicitHeight + 20
                 radius: theme.radius
-                color: "#17171a"
-                border.color: "#2a2a30"
+                color: theme.surface
+                border.color: theme.line
                 RowLayout {
                     id: noticeRow
                     anchors.fill: parent
@@ -209,7 +291,7 @@ ApplicationWindow {
                     Label {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                        color: "#e4e4e7"
+                        color: theme.text
                         text: backend.calibrationMessage
                     }
                 }
@@ -240,9 +322,7 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 currentIndex: win.hasController ? tabs.currentIndex : 0
 
-            ScrollView {
-                contentWidth: availableWidth
-                clip: true
+            TabPage {
                 ColumnLayout {
                     width: parent.width
                     spacing: 16
@@ -257,12 +337,12 @@ ApplicationWindow {
                             Layout.alignment: Qt.AlignHCenter
                             text: qsTr("Connect a controller")
                             font.pixelSize: 20
-                            color: "#e4e4e7"
+                            color: theme.text
                         }
                         Label {
                             Layout.alignment: Qt.AlignHCenter
                             text: qsTr("Plug it in over USB or pair it over Bluetooth. It shows up here on its own.")
-                            color: "#8b8b93"
+                            color: theme.muted
                         }
                     }
                     ProfileBar {
@@ -306,9 +386,9 @@ ApplicationWindow {
                         Layout.leftMargin: 20
                         Layout.rightMargin: 20
                         implicitHeight: triggers.implicitHeight + 32
-                        color: "#17171a"
+                        color: theme.card
                         radius: theme.radius
-                        border.color: "#232328"
+                        border.color: theme.border
 
                         RowLayout {
                             id: triggers
@@ -333,14 +413,14 @@ ApplicationWindow {
                                             text: modelData.title
                                             font.pixelSize: 16
                                             font.weight: Font.DemiBold
-                                            color: "#e4e4e7"
+                                            color: theme.text
                                             Layout.fillWidth: true
                                         }
                                         Label {
                                             readonly property real rawValue: modelData.key === "l2" ? backend.l2Raw : backend.r2Raw
                                             readonly property real outValue: modelData.key === "l2" ? backend.l2Out : backend.r2Out
                                             text: qsTr("In %1%   Out %2%").arg(Math.round(rawValue * 100)).arg(Math.round(outValue * 100))
-                                            color: "#8b8b93"
+                                            color: theme.muted
                                             font.pixelSize: 12
                                             font.features: { "tnum": 1 }
                                         }
@@ -388,9 +468,7 @@ ApplicationWindow {
                 }
             }
 
-            ScrollView {
-                contentWidth: availableWidth
-                clip: true
+            TabPage {
                 ColumnLayout {
                     width: parent.width
                     spacing: 16
@@ -418,9 +496,7 @@ ApplicationWindow {
                 }
             }
 
-            ScrollView {
-                contentWidth: availableWidth
-                clip: true
+            TabPage {
                 ColumnLayout {
                     width: parent.width
                     spacing: 16
@@ -432,9 +508,9 @@ ApplicationWindow {
                         Layout.leftMargin: 20
                         Layout.rightMargin: 20
                         implicitHeight: trainerRow.implicitHeight + 32
-                        color: "#17171a"
+                        color: theme.card
                         radius: theme.radius
-                        border.color: "#232328"
+                        border.color: theme.border
                         RowLayout {
                             id: trainerRow
                             anchors.fill: parent
@@ -444,12 +520,12 @@ ApplicationWindow {
                                 text: qsTr("Precision trainer")
                                 font.pixelSize: 16
                                 font.weight: Font.DemiBold
-                                color: "#e4e4e7"
+                                color: theme.text
                             }
                             InfoIcon { text: qsTr("A short drill: flick to targets around the rim, or hold small targets steady, and see how fast and clean you are. It reads what the game receives, so it also tests your settings.") }
                             Label {
                                 Layout.fillWidth: true
-                                color: "#8b8b93"
+                                color: theme.muted
                                 font.pixelSize: 13
                                 text: {
                                     backend.health
@@ -491,9 +567,7 @@ ApplicationWindow {
                 }
             }
 
-            ScrollView {
-                contentWidth: availableWidth
-                clip: true
+            TabPage {
                 ColumnLayout {
                     width: parent.width
                     spacing: 16
@@ -530,14 +604,14 @@ ApplicationWindow {
                 Label {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: "#8b8b93"
+                    color: theme.muted
                     font.pixelSize: 13
                     text: backend.hideFromGames ? qsTr("Hidden from games: they only see the virtual pad. Turn this off to give Steam its own access back.")
                                                 : qsTr("Hide the real controller from games, so they only see the virtual pad")
                 }
                 Label {
                     text: qsTr("Press ? for shortcuts")
-                    color: "#6b6b73"
+                    color: theme.faint
                     font.pixelSize: 13
                 }
             }
@@ -591,7 +665,7 @@ ApplicationWindow {
                     visible: text.length > 0
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    color: "#ffb4b4"
+                    color: (theme.light ? "#b42318" : "#ffb4b4")
                 }
             }
         }
@@ -606,21 +680,22 @@ ApplicationWindow {
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 24
             visible: opacity > 0
             opacity: backend.switchedTo.length > 0 ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 200 } }
+            anchors.topMargin: backend.switchedTo.length > 0 ? 24 : 8
+            Behavior on opacity { NumberAnimation { duration: theme.animations ? 220 : 0; easing.type: Easing.OutCubic } }
+            Behavior on anchors.topMargin { NumberAnimation { duration: theme.animations ? 320 : 0; easing.type: Easing.OutBack } }
             width: toastText.implicitWidth + 48
             height: 48
             radius: theme.radius
-            color: "#232328"
+            color: theme.border
             border.color: backend.profileColor
             border.width: 2
             Label {
                 id: toastText
                 anchors.centerIn: parent
                 text: backend.switchedTo
-                color: "#e4e4e7"
+                color: theme.text
                 font.pixelSize: 18
                 font.weight: Font.DemiBold
             }
@@ -629,8 +704,10 @@ ApplicationWindow {
         // Every shortcut, on ?.
         Rectangle {
             anchors.fill: parent
-            visible: win.helpVisible
-            color: "#cc0e0e10"
+            visible: opacity > 0
+            opacity: win.helpVisible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: theme.animations ? 160 : 0; easing.type: Easing.OutCubic } }
+            color: theme.scrim
 
             MouseArea { anchors.fill: parent; onClicked: win.helpVisible = false }
 
@@ -639,8 +716,8 @@ ApplicationWindow {
                 width: helpColumn.implicitWidth + 48
                 height: helpColumn.implicitHeight + 40
                 radius: theme.radius
-                color: "#17171a"
-                border.color: "#2a2a30"
+                color: theme.surface
+                border.color: theme.line
 
                 ColumnLayout {
                     id: helpColumn
@@ -651,7 +728,7 @@ ApplicationWindow {
                         text: qsTr("Shortcuts")
                         font.pixelSize: 18
                         font.weight: Font.DemiBold
-                        color: "#e4e4e7"
+                        color: theme.text
                         Layout.bottomMargin: 6
                     }
                     Repeater {
@@ -663,7 +740,7 @@ ApplicationWindow {
                                 Layout.preferredWidth: 130
                                 implicitHeight: keyLabel.implicitHeight + 8
                                 radius: Math.min(4, theme.radius)
-                                color: "#232328"
+                                color: theme.border
                                 Label {
                                     id: keyLabel
                                     anchors.centerIn: parent
@@ -674,12 +751,34 @@ ApplicationWindow {
                             }
                             Label {
                                 text: modelData[1]
-                                color: "#c9c9cf"
+                                color: theme.textSecondary
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    // The old look, held over the new one while it fades away.
+    ShaderEffectSource {
+        id: themeSnapshot
+        anchors.fill: content
+        sourceItem: content
+        live: false
+        visible: false
+        NumberAnimation on opacity {
+            id: themeFade
+            running: false
+            to: 0
+            duration: 420
+            easing.type: Easing.InOutQuad
+            onFinished: themeSnapshot.visible = false
+        }
+    }
+
+    AppearancePopup {
+        id: appearance
+        onPicked: id => win.pickTheme(id)
     }
 }

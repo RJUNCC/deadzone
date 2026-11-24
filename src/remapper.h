@@ -67,6 +67,9 @@ signals:
     void started(bool active);
     void failed(const QString &message);
     void disconnected();
+    // New live state is ready. Sent once until live() is read again, so a
+    // 1000 Hz controller doesn't flood the window with updates.
+    void liveUpdated();
 
 private:
     enum Axis { LX, LY, RX, RY, L2, R2, AxisCount };
@@ -118,4 +121,12 @@ private:
     mutable QMutex m_mutex;
     Profile m_profile;
     LiveState m_live;
+    // The profile as the reader thread last saw it; m_profileGeneration
+    // says when setProfile() has replaced it, so a report never copies the
+    // profile or takes the lock just to read it.
+    const Profile &readerProfile();
+    Profile m_readerProfile;
+    std::atomic<int> m_profileGeneration{1};
+    int m_readerGeneration = 0;
+    mutable std::atomic<bool> m_liveDirty{false};
 };
