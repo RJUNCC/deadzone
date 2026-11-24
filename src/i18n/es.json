@@ -202,5 +202,8 @@
   "That was too short to judge. Record at least a minute of play.": "Fue demasiado corto para juzgar. Graba al menos un minuto de juego.",
   "Vertical curve": "Curva vertical",
   "Watching: %1 of %2. Play normally.": "Observando: %1 de %2. Juega con normalidad.",
-  "Your stick": "Tu stick"
+  "Your stick": "Tu stick",
+  "%1, drawn on the graph": "%1, dibujada en el gráfico",
+  "Drawn on the graph": "Dibujada en el gráfico",
+  "This curve is the yellow line on the graph above. Drag its round points to change it, pick another preset, or switch Shape of the response back to Curve to use a single number.": "Esta curva es la línea amarilla del gráfico de arriba. Arrastra sus puntos redondos para cambiarla, elige otro preajuste o vuelve a poner Forma de la respuesta en Curva para usar un solo número."
 }

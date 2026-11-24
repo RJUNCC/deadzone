@@ -229,16 +229,18 @@ Rectangle {
                     implicitHeight: 30
                     leftPadding: 10
                     rightPadding: 10
+                    readonly property bool active: { backend.revision; return backend.activeCurvePreset(root.side) === modelData }
                     contentItem: Label {
                         text: parent.text
                         font.pixelSize: 12
-                        color: "#c9c9cf"
+                        font.weight: parent.active ? Font.DemiBold : Font.Normal
+                        color: parent.active ? theme.accentForeground : "#c9c9cf"
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
                     background: Rectangle {
                         radius: Math.min(4, theme.radius)
-                        color: parent.down ? "#34343c" : parent.hovered ? "#26262c" : "#1e1e23"
+                        color: parent.active ? theme.accent : parent.down ? "#34343c" : parent.hovered ? "#26262c" : "#1e1e23"
                     }
                     ToolTip.visible: hovered
                     ToolTip.delay: 300
@@ -299,6 +301,24 @@ Rectangle {
                 focusPolicy: Qt.NoFocus
                 onToggled: backend.change(root.side + ".splitCurve", checked ? 1 : 0)
             }
+        }
+        // A drawn curve has no slider: say where it is.
+        RowLayout {
+            visible: root.custom
+            Layout.fillWidth: true
+            spacing: 6
+            Label {
+                text: root.splitCurve ? qsTr("Horizontal curve") : qsTr("Response curve")
+                color: "#c9c9cf"
+                font.pixelSize: 13
+            }
+            Item { Layout.fillWidth: true }
+            Label {
+                text: { backend.revision; const id = backend.activeCurvePreset(root.side); return id.length > 0 ? qsTr("%1, drawn on the graph").arg(backend.curvePresetName(id)) : qsTr("Drawn on the graph") }
+                color: "#8b8b93"
+                font.pixelSize: 13
+            }
+            InfoIcon { text: qsTr("This curve is the yellow line on the graph above. Drag its round points to change it, pick another preset, or switch Shape of the response back to Curve to use a single number.") }
         }
         SettingSlider {
             visible: !root.custom

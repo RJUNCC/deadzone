@@ -168,6 +168,8 @@ public:
     Q_INVOKABLE QStringList curvePresetIds() const { return Curves::curvePresets(); }
     Q_INVOKABLE QString curvePresetName(const QString &id) const;
     Q_INVOKABLE void applyCurvePreset(const QString &side, const QString &id);
+    // The preset the stick's horizontal response matches, or empty.
+    Q_INVOKABLE QString activeCurvePreset(const QString &side) const;
     // How far a pure push must travel before games receive at least this
     // much, or -1 if it never does.
     Q_INVOKABLE double travelFor(const QString &side, double output) const;

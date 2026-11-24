@@ -704,6 +704,19 @@ void Backend::applyCurvePreset(const QString &side, const QString &id)
     endEdit();
 }
 
+QString Backend::activeCurvePreset(const QString &side) const
+{
+    const StickSettings &current = side == "right" ? profile().right : profile().left;
+    for (const QString &id : Curves::curvePresets()) {
+        StickSettings preset = current;
+        Curves::applyCurvePreset(preset, id);
+        if (preset.custom == current.custom && qFuzzyCompare(preset.curve, current.curve)
+            && (!current.custom || preset.points == current.points))
+            return id;
+    }
+    return {};
+}
+
 double Backend::travelFor(const QString &side, double output) const
 {
     if (output <= 0)
