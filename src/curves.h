@@ -20,6 +20,8 @@ struct StickSettings {
     double outer = 0.95;   // At or past this the stick reads as fully pushed.
     double anti = 0.0;     // The smallest output once past the deadzone, for games with their own.
     double curve = 1.0;    // Exponent: 1 is linear, above 1 is finer near the center.
+    bool splitCurve = false;   // Vertical gets its own exponent; the curve above becomes horizontal only.
+    double curveY = 1.0;
     double square = 0.0;   // 0 keeps a round range; 1 lets diagonals reach full travel on both axes.
     bool custom = false;   // Use the drawn curve instead of the exponent.
     QList<QPointF> points = defaultPoints();   // The drawn curve, from (0,0)-ish to (1,1)-ish.

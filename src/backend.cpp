@@ -354,10 +354,66 @@ void Backend::resetCurve(const QString &side)
     endEdit();
 }
 
-double Backend::responseAt(const QString &side, double magnitude) const
+double Backend::responseAt(const QString &side, double magnitude, const QString &axis) const
 {
+    // A straight push along one axis: what the game gets for it.
     const StickSettings &s = side == "right" ? profile().right : profile().left;
-    return Curves::shape(magnitude, s.inner, s.outer, s);
+    const QPointF out = axis == "y" ? Curves::stick({0, magnitude}, s) : Curves::stick({magnitude, 0}, s);
+    return axis == "y" ? std::abs(out.y()) : std::abs(out.x());
+}
+
+void Backend::startSession(int minutes)
+{
+    m_session = Session();
+    m_sessionDuration = std::clamp(minutes, 1, 30) * 60;
+    m_sessionSeconds = 0;
+    m_sessionDone = false;
+    m_recording = true;
+    m_sessionClock.start();
+    emit sessionChanged();
+}
+
+void Backend::stopSession()
+{
+    if (!m_recording)
+        return;
+    m_recording = false;
+    m_sessionSeconds = int(m_sessionClock.elapsed() / 1000);
+    m_sessionDone = true;
+    emit sessionChanged();
+}
+
+void Backend::clearSession()
+{
+    m_recording = m_sessionDone = false;
+    m_session = Session();
+    emit sessionChanged();
+}
+
+void Backend::applySuggestion(int index)
+{
+    const QVariantList list = sessionSuggestions();
+    if (index < 0 || index >= list.size())
+        return;
+    beginEdit();
+    const QVariantMap settings = list.at(index).toMap().value("settings").toMap();
+    for (auto it = settings.cbegin(); it != settings.cend(); ++it)
+        setSetting(it.key(), it.value().toDouble());
+    endEdit();
+    emit sessionChanged();
+}
+
+void Backend::applyAllSuggestions()
+{
+    const QVariantList list = sessionSuggestions();
+    beginEdit();
+    for (const QVariant &item : list) {
+        const QVariantMap settings = item.toMap().value("settings").toMap();
+        for (auto it = settings.cbegin(); it != settings.cend(); ++it)
+            setSetting(it.key(), it.value().toDouble());
+    }
+    endEdit();
+    emit sessionChanged();
 }
 
 QString Backend::uniqueName(const QString &base) const
@@ -870,6 +926,14 @@ void Backend::pollLive()
     LiveState state;
     if (m_selected >= 0 && m_selected < m_devices.size() && m_workers.contains(m_devices.at(m_selected).id))
         state = m_workers.value(m_devices.at(m_selected).id).remapper->live();
+
+    if (m_recording) {
+        m_session.add(state.leftRaw, state.rightRaw, state.l2Raw, state.r2Raw);
+        if (m_sessionClock.elapsed() >= m_sessionDuration * 1000LL)
+            stopSession();
+        else if (m_session.samples() % 30 == 0)
+            emit sessionChanged();
+    }
 
     if (!m_calibration.key.isEmpty()) {
         const QPointF raw = m_calibration.key.startsWith("left") ? state.leftRaw : state.rightRaw;

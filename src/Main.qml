@@ -161,6 +161,13 @@ ApplicationWindow {
                     Layout.rightMargin: 20
                 }
 
+                SessionCard {
+                    visible: win.hasController
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 20
+                    Layout.rightMargin: 20
+                }
+
                 ProfileBar {
                     visible: win.hasController
                     Layout.fillWidth: true

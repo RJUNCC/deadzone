@@ -15,6 +15,7 @@ Item {
     readonly property real outer: { backend.revision; return backend.setting(side + ".outer") }
     readonly property real anti: { backend.revision; return backend.setting(side + ".anti") }
     readonly property var points: { backend.revision; return backend.curvePoints(side) }
+    readonly property bool splitCurve: { backend.revision; return backend.setting(side + ".splitCurve") >= 0.5 }
 
     implicitWidth: 190
     implicitHeight: 190
@@ -69,15 +70,19 @@ Item {
             ctx.globalAlpha = 1
             ctx.fillRect(root.toX(root.outer), root.toY(1), (1 - root.outer) * root.plotW, root.plotH)
 
-            ctx.strokeStyle = root.accent
-            ctx.lineWidth = 2
-            ctx.beginPath()
-            for (let i = 0; i <= 120; ++i) {
-                const x = i / 120
-                const y = backend.responseAt(root.side, x)
-                i === 0 ? ctx.moveTo(root.toX(x), root.toY(y)) : ctx.lineTo(root.toX(x), root.toY(y))
+            // With separate curves, vertical is drawn too, in blue.
+            const lines = root.splitCurve ? [["y", "#60a5fa"], ["x", root.accent]] : [["x", root.accent]]
+            for (const [axis, color] of lines) {
+                ctx.strokeStyle = color
+                ctx.lineWidth = 2
+                ctx.beginPath()
+                for (let i = 0; i <= 120; ++i) {
+                    const x = i / 120
+                    const y = backend.responseAt(root.side, x, axis)
+                    i === 0 ? ctx.moveTo(root.toX(x), root.toY(y)) : ctx.lineTo(root.toX(x), root.toY(y))
+                }
+                ctx.stroke()
             }
-            ctx.stroke()
         }
     }
 

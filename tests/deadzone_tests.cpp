@@ -10,6 +10,7 @@
 #include "curves.h"
 #include "gamepads.h"
 #include "lightbar.h"
+#include "session.h"
 #include <QProcess>
 #include <QStandardPaths>
 #include "theme.h"
@@ -359,6 +360,81 @@ private slots:
         QFile::link(dir.filePath("node"), dir.filePath("41/fd/7"));
         QCOMPARE(Backend::holders({dir.filePath("node")}, dir.path()), QStringList({"steam"}));
         QVERIFY(Backend::holders({}, dir.path()).isEmpty());
+    }
+
+    void separateCurvesBendEachAxis()
+    {
+        StickSettings s;
+        s.inner = 0;
+        s.outer = 1;
+        s.splitCurve = true;
+        s.curve = 1.0;
+        s.curveY = 2.0;
+        QVERIFY(qAbs(Curves::stick({0.5, 0}, s).x() - 0.5) < 1e-9);
+        QVERIFY(qAbs(Curves::stick({0, 0.5}, s).y() - 0.25) < 1e-9);
+        // A full diagonal with full reach still sends 100% on both axes.
+        s.square = 1;
+        const double d = std::sqrt(0.5);
+        const QPointF out = Curves::stick({d, d}, s);
+        QVERIFY(qAbs(out.x() - 1) < 1e-6 && qAbs(out.y() - 1) < 1e-6);
+    }
+
+    void sessionSuggestsFromRealUse()
+    {
+        Session session;
+        // Two minutes: rests that drift to 9%, hard diagonals on the left
+        // stick that only reach 85% toward the left, and a right trigger
+        // never pressed past 80%.
+        for (int i = 0; i < 7200; ++i) {
+            const int phase = (i / 300) % 4;
+            QPointF left, right(0.01, 0);
+            if (phase == 0) {
+                left = {0.09 * std::cos(0.3), 0.09 * std::sin(0.3)};
+            } else {
+                const double angle = (i % 360) * M_PI / 180;
+                const double reach = std::cos(angle) < -0.5 ? 0.85 : 1.0;
+                // Pull toward the diagonals.
+                const double snapped = std::round((angle - M_PI / 4) / (M_PI / 2)) * (M_PI / 2) + M_PI / 4;
+                const double a = phase == 1 ? snapped : angle;
+                left = {std::cos(a) * reach, std::sin(a) * reach};
+            }
+            session.add(left, right, 0.0, phase == 2 ? 0.8 : 0.0);
+        }
+        Profile p = Presets::make("rocketleague");
+        p.left.square = 0;
+        QStringList keys;
+        for (const QVariant &item : session.suggestions(p))
+            keys += item.toMap().value("settings").toMap().keys();
+        QVERIFY2(keys.contains("left.inner"), qPrintable(keys.join(",")));
+        QVERIFY2(keys.contains("left.outer"), qPrintable(keys.join(",")));
+        QVERIFY2(keys.contains("left.square"), qPrintable(keys.join(",")));
+        QVERIFY2(keys.contains("r2.outer"), qPrintable(keys.join(",")));
+        QVERIFY(!keys.contains("l2.outer"));
+    }
+
+    void sessionNeedsEnoughPlay()
+    {
+        Session session;
+        for (int i = 0; i < 600; ++i)
+            session.add({0.2, 0}, {}, 0, 0);
+        QVERIFY(session.suggestions(Profile()).isEmpty());
+        QCOMPARE(session.heatmap(true).size(), Session::Grid * Session::Grid);
+    }
+
+    void applyingASuggestionIsOneUndo()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.startSession(1);
+        for (int i = 0; i < 4000; ++i)
+            backend.addSessionSample({0.12, 0.0}, {}, 0, 0);
+        backend.stopSession();
+        const QVariantList list = backend.sessionSuggestions();
+        QVERIFY(!list.isEmpty());
+        backend.applySuggestion(0);
+        QVERIFY(backend.setting("left.inner") > 0.12);
+        backend.undo();
+        QCOMPARE(backend.setting("left.inner"), 0.05);
     }
 
     void profileRoundTripsAndClamps()

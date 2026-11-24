@@ -17,6 +17,7 @@ Rectangle {
     readonly property int shape: { backend.revision; return Math.round(backend.setting(side + ".shape")) }
     readonly property bool split: { backend.revision; return backend.setting(side + ".split") >= 0.5 }
     readonly property bool custom: { backend.revision; return backend.setting(side + ".custom") >= 0.5 }
+    readonly property bool splitCurve: { backend.revision; return backend.setting(side + ".splitCurve") >= 0.5 }
     readonly property bool measuring: backend.calibrating.startsWith(side + ".")
 
     color: "#17171a"
@@ -89,6 +90,17 @@ Rectangle {
                     font.pixelSize: 12
                 }
             }
+        }
+
+        // What each mark on the two pictures means.
+        Flow {
+            Layout.fillWidth: true
+            spacing: 14
+            LegendItem { color: "#8b8b93"; text: qsTr("Your stick") }
+            LegendItem { color: theme.accent; text: qsTr("Sent to the game") }
+            LegendItem { visible: root.dodge > 0; color: "#60a5fa"; mark: "ring"; text: qsTr("Flip threshold") }
+            LegendItem { visible: root.splitCurve; color: theme.accent; mark: "line"; text: qsTr("Horizontal curve") }
+            LegendItem { visible: root.splitCurve; color: "#60a5fa"; mark: "line"; text: qsTr("Vertical curve") }
         }
 
         // Measuring fits the deadzone and outer edge to this stick.
@@ -270,12 +282,43 @@ Rectangle {
                 onPicked: index => backend.change(root.side + ".custom", index)
             }
         }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            Label {
+                text: qsTr("Separate horizontal and vertical curves")
+                color: "#c9c9cf"
+                font.pixelSize: 13
+            }
+            InfoIcon {
+                text: qsTr("Gives up and down its own curve. In Rocket League horizontal is steering on the ground and yaw or roll in the air, while vertical is pitch in the air, so the two can feel different. The graph draws vertical in blue. Horizontal keeps the presets and the drawn curve; vertical uses one number.")
+            }
+            Item { Layout.fillWidth: true }
+            Switch {
+                checked: root.splitCurve
+                focusPolicy: Qt.NoFocus
+                onToggled: backend.change(root.side + ".splitCurve", checked ? 1 : 0)
+            }
+        }
         SettingSlider {
             visible: !root.custom
             Layout.fillWidth: true
             key: root.side + ".curve"
-            label: qsTr("Response curve")
+            label: root.splitCurve ? qsTr("Horizontal curve") : qsTr("Response curve")
             description: qsTr("Bends the middle of the range. Above 1 is finer near the center and faster at the rim; below 1 is the opposite.")
+            from: 0.2
+            to: 4
+            stepSize: 0.05
+            format: function (v) {
+                return Math.abs(v - 1) < 0.001 ? qsTr("Linear") : "×" + v.toLocaleString(Qt.locale(), 'f', 2)
+            }
+        }
+        SettingSlider {
+            visible: root.splitCurve
+            Layout.fillWidth: true
+            key: root.side + ".curveY"
+            label: qsTr("Vertical curve")
+            description: qsTr("Bends up and down movement only. Above 1 is finer near the center; below 1 responds sooner.")
             from: 0.2
             to: 4
             stepSize: 0.05

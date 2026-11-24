@@ -103,10 +103,49 @@ double shape(double magnitude, double inner, double outer, const StickSettings &
     return s.anti + (1.0 - s.anti) * response(rescale(magnitude, inner, outer), s);
 }
 
+namespace {
+
+// Round-gated sticks like the DualShock 4 only reach about 71% on each axis
+// at a diagonal. Stretching the circle toward a square lets a diagonal
+// reach full travel on both, the way games tuned for Xbox pads expect.
+QPointF stretch(QPointF out, double amount)
+{
+    const double length = std::hypot(out.x(), out.y());
+    if (amount > 0 && length > 1e-9) {
+        const double reach = 1.0 / std::max(std::abs(out.x()), std::abs(out.y())) * length;
+        out *= 1.0 + (reach - 1.0) * std::clamp(amount, 0.0, 1.0);
+    }
+    return {std::clamp(out.x(), -1.0, 1.0), std::clamp(out.y(), -1.0, 1.0)};
+}
+
+}
+
 QPointF stick(QPointF raw, const StickSettings &s)
 {
     const double x = std::clamp(raw.x(), -1.0, 1.0);
     const double y = std::clamp(raw.y(), -1.0, 1.0);
+
+    if (s.splitCurve) {
+        // Separate curves: the deadzone, edge, and diagonal reach are applied
+        // straight, then each axis is bent on its own, so steering and
+        // pitch can feel different. Horizontal uses the main curve (drawn
+        // or exponent), vertical its own exponent.
+        StickSettings straight = s;
+        straight.custom = false;
+        straight.curve = 1.0;
+        straight.anti = 0.0;
+        straight.splitCurve = false;
+        const QPointF linear = stick(raw, straight);
+        StickSettings vertical = s;
+        vertical.custom = false;
+        vertical.curve = s.curveY;
+        auto bend = [&](double v, const StickSettings &axis) {
+            if (std::abs(v) < 1e-9)
+                return 0.0;
+            return std::copysign(s.anti + (1.0 - s.anti) * response(std::abs(v), axis), v);
+        };
+        return {bend(linear.x(), s), bend(linear.y(), vertical)};
+    }
 
     QPointF out;
     if (s.shape == StickSettings::Cross) {
@@ -127,17 +166,7 @@ QPointF stick(QPointF raw, const StickSettings &s)
         const double length = shape(std::min(magnitude, 1.0), inner, s.outer, s);
         out = {dx * length, dy * length};
     }
-
-    // Round-gated sticks like the DualShock 4 only reach about 71% on each
-    // axis at a diagonal. Stretching the circle toward a square lets a
-    // diagonal reach full travel on both, the way games tuned for Xbox pads
-    // expect.
-    const double length = std::hypot(out.x(), out.y());
-    if (s.square > 0 && length > 1e-9) {
-        const double reach = 1.0 / std::max(std::abs(out.x()), std::abs(out.y())) * length;
-        out *= 1.0 + (reach - 1.0) * std::clamp(s.square, 0.0, 1.0);
-    }
-    return {std::clamp(out.x(), -1.0, 1.0), std::clamp(out.y(), -1.0, 1.0)};
+    return stretch(out, s.square);
 }
 
 double trigger(double raw, const TriggerSettings &s)
@@ -160,7 +189,7 @@ QJsonObject stickJson(const StickSettings &s)
         radii.append(r);
     return {{"shape", shapes[s.shape]}, {"inner", s.inner}, {"innerY", s.innerY}, {"split", s.split}, {"radii", radii},
             {"outer", s.outer}, {"anti", s.anti},
-            {"curve", s.curve}, {"square", s.square}, {"custom", s.custom}, {"points", points}};
+            {"curve", s.curve}, {"splitCurve", s.splitCurve}, {"curveY", s.curveY}, {"square", s.square}, {"custom", s.custom}, {"points", points}};
 }
 
 StickSettings stickFrom(const QJsonObject &o)
@@ -184,6 +213,8 @@ StickSettings stickFrom(const QJsonObject &o)
     s.outer = std::clamp(o.value("outer").toDouble(s.outer), 0.1, 1.0);
     s.anti = std::clamp(o.value("anti").toDouble(s.anti), 0.0, 0.9);
     s.curve = std::clamp(o.value("curve").toDouble(s.curve), 0.2, 4.0);
+    s.splitCurve = o.value("splitCurve").toBool(false);
+    s.curveY = std::clamp(o.value("curveY").toDouble(s.curve), 0.2, 4.0);
     s.square = std::clamp(o.value("square").toDouble(s.square), 0.0, 1.0);
     s.custom = o.value("custom").toBool(false);
     const QJsonArray points = o.value("points").toArray();
@@ -245,6 +276,8 @@ double Profile::value(const QString &key) const
         if (field == "outer") return s.outer;
         if (field == "anti") return s.anti;
         if (field == "curve") return s.curve;
+        if (field == "curveY") return s.curveY;
+        if (field == "splitCurve") return s.splitCurve ? 1.0 : 0.0;
         if (field == "square") return s.square;
         if (field == "shape") return s.shape;
         if (field == "custom") return s.custom ? 1.0 : 0.0;
@@ -268,6 +301,8 @@ bool Profile::setValue(const QString &key, double v)
         else if (field == "outer") s.outer = std::clamp(v, 0.1, 1.0);
         else if (field == "anti") s.anti = std::clamp(v, 0.0, 0.9);
         else if (field == "curve") s.curve = std::clamp(v, 0.2, 4.0);
+        else if (field == "curveY") s.curveY = std::clamp(v, 0.2, 4.0);
+        else if (field == "splitCurve") s.splitCurve = v >= 0.5;
         else if (field == "square") s.square = std::clamp(v, 0.0, 1.0);
         else if (field == "shape") s.shape = StickSettings::Shape(std::clamp(int(std::lround(v)), 0, 3));
         else if (field == "custom") s.custom = v >= 0.5;

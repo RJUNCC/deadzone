@@ -22,6 +22,11 @@ applied. Rumble is passed back to the controller.
 - **Trigger deadzone**: Rocket League adds its own deadzone to the triggers
   in `TAInput.ini`. Deadzone reads it from the game's Proton prefix and
   offers to cancel it with trigger anti-deadzone.
+- **Session check**: play for 2, 5, or 10 minutes while Deadzone watches the
+  controller. It shows heatmaps of where each stick spent its time and
+  suggests changes with their reasons (drift at rest, reach in each
+  direction, diagonal use, small versus full-tilt movement, trigger depth),
+  each with an Apply button. It sees the controller, not the game.
 - **Profiles** start from a preset: Standard, Freestyle (finer aerial
   control), or Worn stick (bigger deadzone, lower outer edge).
 
@@ -37,7 +42,7 @@ Each setting explains itself behind its info icon (`I` shows them all).
 | Anti-deadzone | The smallest output once you leave the deadzone, to cancel the game's own deadzone. |
 | Outer edge | Past this the stick reads as fully pushed. |
 | Diagonal reach | Lets diagonals reach full travel on both axes, like an Xbox stick; the DualShock 4 otherwise stops near 71% per axis. |
-| Response | Presets (Linear, Soft center, Precise, Quick, S-curve, Two-stage), one exponent, or a curve drawn point by point. |
+| Response | Presets (Linear, Soft center, Precise, Quick, S-curve, Two-stage), one exponent, or a curve drawn point by point. Vertical can get its own curve, for pitch in the air. |
 | Triggers | Deadzone, outer edge, and anti-deadzone for each. |
 
 **Measure drift** and **Measure edge** fit the deadzone and outer edge to

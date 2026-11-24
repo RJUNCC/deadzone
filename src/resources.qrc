@@ -12,6 +12,8 @@
         <file alias="SplitScreenCard.qml">SplitScreenCard.qml</file>
         <file alias="LightbarCard.qml">LightbarCard.qml</file>
         <file alias="InfoIcon.qml">InfoIcon.qml</file>
+        <file alias="LegendItem.qml">LegendItem.qml</file>
+        <file alias="SessionCard.qml">SessionCard.qml</file>
         <file alias="RocketLeagueCard.qml">RocketLeagueCard.qml</file>
         <file alias="i18n/es.json">i18n/es.json</file>
     </qresource>

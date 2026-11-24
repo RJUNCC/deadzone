@@ -172,7 +172,7 @@ Rectangle {
                     ? qsTr("Anti-deadzone matches the in-game deadzone, so the two cancel out.")
                     : qsTr("The in-game deadzone of %1 adds to this one, so the car ignores more of the stick than the deadzone here suggests. Set it to its lowest in the game, or cancel it with Anti-deadzone.")
                         .arg(root.gameDeadzone.toLocaleString(Qt.locale(), 'f', 2))
-            action: good ? "" : qsTr("Cancel it")
+            action: good ? "" : qsTr("Set Anti-deadzone to %1").arg(root.gameDeadzone.toLocaleString(Qt.locale(), 'f', 2))
             onActed: backend.change("left.anti", root.gameDeadzone)
         }
         Insight {
@@ -186,9 +186,9 @@ Rectangle {
             visible: root.triggerGame >= 0
             good: root.triggersMatch
             text: root.triggersMatch
-                  ? qsTr("Rocket League adds a %1% deadzone to the triggers (TAInput.ini), and trigger Anti-deadzone cancels it.").arg(Math.round(root.triggerGame * 100))
-                  : qsTr("Rocket League adds a %1% deadzone to the triggers (TAInput.ini). Matching trigger Anti-deadzone to it makes throttle respond from the first touch.").arg(Math.round(root.triggerGame * 100))
-            action: good ? "" : qsTr("Match")
+                  ? qsTr("Rocket League adds a %1% deadzone to the triggers (TAInput.ini). Both triggers' Anti-deadzone here is %1% too, so the two cancel and throttle responds from the first touch.").arg(Math.round(root.triggerGame * 100))
+                  : qsTr("Rocket League adds a %1% deadzone to the triggers (TAInput.ini), so the first %1% of each press does nothing. Setting both triggers' Anti-deadzone to %1% cancels it.").arg(Math.round(root.triggerGame * 100))
+            action: good ? "" : qsTr("Set both to %1%").arg(Math.round(root.triggerGame * 100))
             onActed: { backend.beginEdit(); backend.setSetting("l2.anti", root.triggerGame); backend.setSetting("r2.anti", root.triggerGame); backend.endEdit() }
         }
     }

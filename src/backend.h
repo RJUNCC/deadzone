@@ -15,6 +15,7 @@
 #include "curves.h"
 #include "gamepads.h"
 #include "lightbar.h"
+#include "session.h"
 
 class QThread;
 class Remapper;
@@ -50,6 +51,11 @@ class Backend : public QObject {
     Q_PROPERTY(bool backgroundAvailable READ backgroundAvailable CONSTANT)
     Q_PROPERTY(bool background READ background WRITE setBackground NOTIFY gameChanged)
     Q_PROPERTY(QString rawHeldBy READ rawHeldBy NOTIFY hideChanged)
+    Q_PROPERTY(bool recording READ recording NOTIFY sessionChanged)
+    Q_PROPERTY(int sessionElapsed READ sessionElapsed NOTIFY sessionChanged)
+    Q_PROPERTY(int sessionDuration READ sessionDuration NOTIFY sessionChanged)
+    Q_PROPERTY(bool sessionDone READ sessionDone NOTIFY sessionChanged)
+    Q_PROPERTY(QVariantList sessionSuggestions READ sessionSuggestions NOTIFY sessionChanged)
 
     Q_PROPERTY(QString calibrating READ calibrating NOTIFY calibrationChanged)
     Q_PROPERTY(double calibrationProgress READ calibrationProgress NOTIFY calibrationChanged)
@@ -105,6 +111,11 @@ public:
     bool background() const { return m_background; }
     void setBackground(bool enabled);
     QString rawHeldBy() const { return m_rawHeldBy; }
+    bool recording() const { return m_recording; }
+    int sessionElapsed() const { return m_recording ? int(m_sessionClock.elapsed() / 1000) : m_sessionSeconds; }
+    int sessionDuration() const { return m_sessionDuration; }
+    bool sessionDone() const { return m_sessionDone; }
+    QVariantList sessionSuggestions() const { return m_sessionDone ? m_session.suggestions(profile()) : QVariantList(); }
     const QList<Profile> &profiles() const { return m_profiles; }
 
     QString calibrating() const { return m_calibration.key; }
@@ -137,7 +148,18 @@ public:
     Q_INVOKABLE QVariantList curvePoints(const QString &side) const;
     Q_INVOKABLE void setCurvePoint(const QString &side, int index, double x, double y);
     Q_INVOKABLE void resetCurve(const QString &side);
-    Q_INVOKABLE double responseAt(const QString &side, double magnitude) const;
+    // axis "y" gives the vertical response, which differs with separate curves.
+    Q_INVOKABLE double responseAt(const QString &side, double magnitude, const QString &axis = {}) const;
+
+    // Watches real play for a while, then suggests changes.
+    Q_INVOKABLE void startSession(int minutes);
+    Q_INVOKABLE void stopSession();
+    Q_INVOKABLE void clearSession();
+    Q_INVOKABLE void applySuggestion(int index);
+    Q_INVOKABLE void applyAllSuggestions();
+    Q_INVOKABLE QVariantList sessionHeatmap(bool left) const { return m_session.heatmap(left); }
+    // For tests: feeds the session as if the stick had moved so.
+    void addSessionSample(QPointF left, QPointF right, double l2, double r2) { m_session.add(left, right, l2, r2); }
 
     // Custom deadzone shape: eight sizes around the stick, clockwise from right.
     Q_INVOKABLE void setRadius(const QString &side, int index, double radius);
@@ -203,6 +225,7 @@ signals:
     void liveChanged();
     void batteryChanged();
     void gameChanged();
+    void sessionChanged();
 
 private:
     struct Worker {
@@ -274,6 +297,10 @@ private:
     int m_gameRevision = 0;
     QHash<QString, double> m_game{{"deadzone", 0.0}, {"dodge", 0.5}, {"steering", 1.0}, {"aerial", 1.0}};
     QString m_rawHeldBy;
+    Session m_session;
+    bool m_recording = false, m_sessionDone = false;
+    int m_sessionDuration = 300, m_sessionSeconds = 0;
+    QElapsedTimer m_sessionClock;
     Lightbar m_lightbar;
     int m_battery = -1;
     bool m_charging = false;
