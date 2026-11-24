@@ -62,7 +62,10 @@ QList<GamepadInfo> scan(const QString &inputDirectory, const QString &sysClass)
             info.hidraw = "/dev/" + hidraws.first();
         // The DualShock 4's lightbar is three LEDs named after the input
         // device: inputN:red, inputN:green, inputN:blue.
-        const auto leds = QDir(sys + "/device/leds").entryList({"*:red"}, QDir::Dirs | QDir::NoDotAndDotDot);
+        // A DualSense has one multicolor LED instead: inputN:rgb:indicator.
+        auto leds = QDir(sys + "/device/leds").entryList({"*:red"}, QDir::Dirs | QDir::NoDotAndDotDot);
+        if (leds.isEmpty())
+            leds = QDir(sys + "/device/leds").entryList({"*:rgb:indicator"}, QDir::Dirs | QDir::NoDotAndDotDot);
         if (!leds.isEmpty())
             info.lightbar = QDir(sys + "/device/leds/" + leds.first()).absolutePath();
         const auto supplies = QDir(sys + "/device/power_supply").entryList(QDir::Dirs | QDir::NoDotAndDotDot);

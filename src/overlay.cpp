@@ -1,7 +1,9 @@
 #include "overlay.h"
 
 #include <QFile>
+#include <QRegularExpression>
 #include <QTcpSocket>
+#include <QUrl>
 
 OverlayServer::OverlayServer(QObject *parent) : QObject(parent)
 {
@@ -65,6 +67,23 @@ void OverlayServer::respond(QTcpSocket *socket)
         QFile page(":/overlay.html");
         if (page.open(QIODevice::ReadOnly))
             body = page.readAll();
+    } else if (path == "/recording") {
+        // Only a plain recording name, never a path out of the folder.
+        const QByteArray query = request.value(1).split('?').value(1);
+        QString name;
+        for (const QByteArray &pair : query.split('&'))
+            if (pair.startsWith("name="))
+                name = QUrl::fromPercentEncoding(pair.mid(5));
+        static const QRegularExpression safe("^inputs-[0-9-]+\\.json$");
+        QFile file(m_recordings + "/" + name);
+        if (!m_recordings.isEmpty() && safe.match(name).hasMatch() && file.open(QIODevice::ReadOnly)) {
+            body = file.readAll();
+            type = "application/json";
+        } else {
+            status = "404 Not Found";
+            body = "Not found";
+            type = "text/plain";
+        }
     } else if (path == "/state") {
         body = m_last.isEmpty() ? "{}" : m_last;
         type = "application/json";

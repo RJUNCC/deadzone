@@ -10,5 +10,13 @@
   "Your last %n run(s); lower is faster.": {
     "one": "Your last run; lower is faster.",
     "other": "Your last %n runs; lower is faster."
+  },
+  "Improved from %1 to %2 over %n day(s) of practice.": {
+    "one": "Improved from %1 to %2 over %n day of practice.",
+    "other": "Improved from %1 to %2 over %n days of practice."
+  },
+  "From %1 to %2 over %n day(s) of practice.": {
+    "one": "From %1 to %2 over %n day of practice.",
+    "other": "From %1 to %2 over %n days of practice."
   }
 }

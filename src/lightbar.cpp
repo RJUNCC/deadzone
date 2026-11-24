@@ -19,6 +19,45 @@ bool writeValue(const QString &path, int value)
     return file.open(QIODevice::WriteOnly) && file.write(QByteArray::number(value)) > 0;
 }
 
+// A multicolor LED (DualSense) takes "r g b" in one file; the DualShock 4
+// has a file per color.
+bool multicolor(const QString &target)
+{
+    return !target.endsWith(":red");
+}
+
+QColor readColor(const QString &target)
+{
+    if (multicolor(target)) {
+        QFile file(target + "/multi_intensity");
+        if (!file.open(QIODevice::ReadOnly))
+            return {};
+        const QList<QByteArray> parts = file.readAll().trimmed().split(' ');
+        return parts.size() == 3 ? QColor(parts[0].toInt(), parts[1].toInt(), parts[2].toInt()) : QColor();
+    }
+    return QColor(readValue(Lightbar::channel(target, "red")), readValue(Lightbar::channel(target, "green")),
+                  readValue(Lightbar::channel(target, "blue")));
+}
+
+bool writeColor(const QString &target, const QColor &color, const QColor &last, bool fresh)
+{
+    if (multicolor(target)) {
+        QFile file(target + "/multi_intensity");
+        const bool ok = file.open(QIODevice::WriteOnly)
+                        && file.write(QString("%1 %2 %3").arg(color.red()).arg(color.green()).arg(color.blue()).toLatin1()) > 0;
+        if (fresh)
+            writeValue(target + "/brightness", readValue(target + "/max_brightness") > 0 ? readValue(target + "/max_brightness") : 255);
+        return ok;
+    }
+    bool ok = true;
+    if (fresh || last.red() != color.red()) ok &= writeValue(Lightbar::channel(target, "red"), color.red());
+    if (fresh || last.green() != color.green()) ok &= writeValue(Lightbar::channel(target, "green"), color.green());
+    if (fresh || last.blue() != color.blue()) ok &= writeValue(Lightbar::channel(target, "blue"), color.blue());
+    if (fresh && QFile::exists(Lightbar::channel(target, "global")))
+        writeValue(Lightbar::channel(target, "global"), 1);
+    return ok;
+}
+
 }
 
 Lightbar::Lightbar(QObject *parent) : QObject(parent)
@@ -93,9 +132,11 @@ void Lightbar::setBrightness(double brightness)
 
 bool Lightbar::writable() const
 {
-    for (const QString &target : m_targets)
-        if (::access(QFile::encodeName(channel(target, "red")).constData(), W_OK) != 0)
+    for (const QString &target : m_targets) {
+        const QString file = multicolor(target) ? target + "/multi_intensity" : channel(target, "red");
+        if (::access(QFile::encodeName(file).constData(), W_OK) != 0)
             return false;
+    }
     return !m_targets.isEmpty();
 }
 
@@ -107,8 +148,7 @@ void Lightbar::setTargets(const QStringList &targets)
     // turning the lightbar off or quitting gives it back.
     for (const QString &target : targets)
         if (!m_original.contains(target))
-            m_original.insert(target, QColor(readValue(channel(target, "red")), readValue(channel(target, "green")),
-                                             readValue(channel(target, "blue"))));
+            m_original.insert(target, readColor(target));
     m_targets = targets;
     m_written.clear();
     apply();
@@ -189,13 +229,7 @@ void Lightbar::write(const QColor &color)
             continue;
         // Only the channels that changed, to keep reports to the controller few.
         const bool fresh = !m_written.contains(target);
-        const QColor last = m_written.value(target);
-        bool ok = true;
-        if (fresh || last.red() != color.red()) ok &= writeValue(channel(target, "red"), color.red());
-        if (fresh || last.green() != color.green()) ok &= writeValue(channel(target, "green"), color.green());
-        if (fresh || last.blue() != color.blue()) ok &= writeValue(channel(target, "blue"), color.blue());
-        if (fresh && QFile::exists(channel(target, "global")))
-            writeValue(channel(target, "global"), 1);
+        const bool ok = writeColor(target, color, m_written.value(target), fresh);
         if (ok)
             m_written.insert(target, color);
     }
@@ -208,9 +242,7 @@ void Lightbar::restore()
         const QColor original = m_original.value(target);
         if (!original.isValid())
             continue;
-        writeValue(channel(target, "red"), original.red());
-        writeValue(channel(target, "green"), original.green());
-        writeValue(channel(target, "blue"), original.blue());
+        writeColor(target, original, QColor(), true);
     }
     m_written.clear();
 }
@@ -218,9 +250,14 @@ void Lightbar::restore()
 QStringList Lightbar::files() const
 {
     QStringList files;
-    for (const QString &target : m_targets)
+    for (const QString &target : m_targets) {
+        if (multicolor(target)) {
+            files << target + "/multi_intensity" << target + "/brightness";
+            continue;
+        }
         for (const char *name : {"red", "green", "blue", "global"})
             files.append(channel(target, name));
+    }
     return files;
 }
 

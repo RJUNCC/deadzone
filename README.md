@@ -52,6 +52,20 @@ Options go after the `?` in the address; the window builds it for you:
 | `history=1` | A strip of the last three seconds of button and trigger presses underneath (adds 100 to the height). |
 | `demo=1` | Moves on its own, for placing it in OBS without a controller. |
 
+## Input recording
+
+**Record inputs** in the overlay card saves what the controller does, 60
+times a second, to `~/Videos/deadzone inputs/`. **Play** opens the replay
+in a browser with pause, a scrub bar, frame stepping, and quarter and half
+speed; **Copy for OBS** gives a Browser Source address that plays it on
+repeat without controls, to lay over the clip in an editor.
+
+## Buttons
+
+Each profile can remap any button to another, to nothing, or to a full
+trigger press (boost on R1, for example). The overlay and the flip
+analyzer follow the remapping, since they show what the game receives.
+
 ## On the controller
 
 - **PS + d-pad left or right** switches to the previous or next profile, even
@@ -71,12 +85,16 @@ Options go after the `?` in the address; the window builds it for you:
   Control, small targets to land on and hold. It times each target, counts
   overshoots, names your slowest direction, and keeps your results. It reads
   what the game receives, so it tests your settings as well as your hands.
+- **Progress** charts your flip gap, diagonal accuracy, half-flip and speed
+  flip cancels, and trainer times by day, per controller.
 - **Flip analyzer**: every two jump presses within a second and a half are
   timed to the millisecond from the controller's own timestamps, with where
   the left stick was: front, back, side, or diagonal flip, or a double jump
   inside your Dodge Deadzone. It shows how far off the diagonal each diagonal
   flip was, how full each axis got, and points out flips that sit right on
-  the dodge threshold. The jump button can be changed.
+  the dodge threshold. A back flip followed by a forward push counts as a
+  half-flip cancel, and a forward diagonal followed by a pull back as a speed
+  flip cancel, each timed. The jump button can be changed.
 - **Controller health**: every session check and Measure drift adds a point
   to a per-controller chart of stick drift, with a line telling you when a
   stick's drift is rising.
@@ -156,11 +174,34 @@ run `deadzone run` yourself. While the window is open it does the remapping
 and the service waits; closing the window hands back to the service.
 `deadzone list --json` shows what Deadzone can see.
 
+## Controllers
+
+Tested by hand with a DualShock 4 (wired and Bluetooth). The automated
+device tests also drive an Xbox-style pad (the `xpad` layout and ranges) and
+a DualSense-style pad through the whole remapper, using pretend controllers
+made with uinput. Anything the kernel shows as a gamepad should work; the
+lightbar works on the DualShock 4 and DualSense.
+
+## Installing
+
+From the AUR, once published: `yay -S deadzone`. From source:
+
+```sh
+git clone <this repository> && cd deadzone
+bin/install
+```
+
+Deadzone needs read access to `/dev/input/event*` and write access to
+`/dev/uinput`, which Steam's udev rules (or `game-devices-udev`) give the
+logged-in user.
+
 ## Building
 
 ```sh
 bin/build      # build/deadzone
 bin/test       # unit tests, offscreen
+DEADZONE_DEVICE_TESTS=1 bin/test   # also drive pretend controllers end to end (close games first)
+bin/release    # source tarball and AUR PKGBUILD in dist/
 bin/install    # makepkg -fsi, adds it to the app launcher
 ```
 

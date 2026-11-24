@@ -15,6 +15,8 @@ class OverlayServer : public QObject {
 
 public:
     explicit OverlayServer(QObject *parent = nullptr);
+    // Where /recording?name= reads saved input recordings from.
+    void setRecordingsDirectory(const QString &directory) { m_recordings = directory; }
 
     // Returns false, with the reason in error(), if the port is taken.
     bool start(quint16 port);
@@ -38,4 +40,5 @@ private:
     QList<QTcpSocket *> m_streams;
     QByteArray m_last;
     QString m_error;
+    QString m_recordings;
 };

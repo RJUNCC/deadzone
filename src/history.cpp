@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocale>
+#include <QMap>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <cmath>
@@ -109,6 +110,51 @@ bool History::addTrainer(const QString &controller, const QString &mode, double 
     m_data.insert(controller, pad);
     save();
     return best;
+}
+
+void History::addDaily(const QString &controller, const QString &metric, double value, qint64 when)
+{
+    const QString day = QDateTime::fromSecsSinceEpoch(now(when)).date().toString(Qt::ISODate);
+    QJsonObject pad = m_data.value(controller).toObject();
+    QJsonObject days = pad.value("days").toObject();
+    QJsonObject today = days.value(day).toObject();
+    QJsonObject entry = today.value(metric).toObject();
+    entry.insert("sum", entry.value("sum").toDouble() + value);
+    entry.insert("count", entry.value("count").toInt() + 1);
+    today.insert(metric, entry);
+    days.insert(day, today);
+    pad.insert("days", days);
+    m_data.insert(controller, pad);
+    save();
+}
+
+QVariantList History::daily(const QString &controller, const QString &metric) const
+{
+    QVariantList out;
+    if (metric.startsWith("trainer:")) {
+        // The best run of each day.
+        QMap<QString, double> best;
+        for (const QVariant &item : trainer(controller, metric.mid(8))) {
+            const QVariantMap run = item.toMap();
+            const QString day = QDateTime::fromSecsSinceEpoch(run.value("t").toLongLong()).date().toString(Qt::ISODate);
+            const double ms = run.value("ms").toDouble();
+            if (!best.contains(day) || ms < best.value(day))
+                best.insert(day, ms);
+        }
+        for (auto it = best.cbegin(); it != best.cend(); ++it)
+            out.append(QVariantMap{{"day", it.key()}, {"value", it.value()}});
+        return out;
+    }
+    const QJsonObject days = m_data.value(controller).toObject().value("days").toObject();
+    QStringList keys = days.keys();
+    keys.sort();
+    for (const QString &day : keys) {
+        const QJsonObject entry = days.value(day).toObject().value(metric).toObject();
+        const int count = entry.value("count").toInt();
+        if (count > 0)
+            out.append(QVariantMap{{"day", day}, {"value", entry.value("sum").toDouble() / count}, {"count", count}});
+    }
+    return out;
 }
 
 void History::setDrain(const QString &controller, double percentPerHour)

@@ -15,6 +15,8 @@
     trail=1               a fading trail behind each stick
     history=1             a strip of the last three seconds of button presses underneath
     demo=1                move on its own, for placing it in OBS without a controller
+    replay=inputs-….json  play back a saved input recording instead of the live controller
+    controls=0            hide the replay controls (for OBS); loop=1 plays it on repeat
 -->
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
@@ -38,6 +40,12 @@
   .profile { fill: rgba(255, 255, 255, 0.85); font-size: 18px; font-weight: 600; text-anchor: middle; }
   .compact .full-only { display: none; }
   .waiting { opacity: 0.35; }
+  #controls { display: none; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 10px;
+              background: rgba(18, 18, 22, 0.92); border-radius: 10px; color: #e4e4e7; font-size: 13px; width: 580px; box-sizing: border-box; }
+  #controls button { background: #26262c; color: #e4e4e7; border: 0; border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
+  #controls button.on { background: var(--accent); color: #111; }
+  #controls input[type=range] { flex: 1; accent-color: var(--accent); }
+  #time { font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
 </style>
 </head>
 <body>
@@ -76,6 +84,16 @@
 </svg>
 <canvas id="trail"></canvas>
 <canvas id="history"></canvas>
+<div id="controls">
+  <button id="play" title="Space">Pause</button>
+  <button id="back" title="Left arrow: one frame back">‹</button>
+  <button id="fwd" title="Right arrow: one frame forward">›</button>
+  <input id="seek" type="range" min="0" max="1000" value="0">
+  <span id="time">0:00.0</span>
+  <button class="speed" data-speed="0.25">¼×</button>
+  <button class="speed" data-speed="0.5">½×</button>
+  <button class="speed on" data-speed="1">1×</button>
+</div>
 </div>
 <script>
   const params = new URLSearchParams(location.search);
@@ -232,7 +250,59 @@
   }
   requestAnimationFrame(draw);
 
-  if (params.get("demo") === "1") {
+  const replay = params.get("replay");
+  if (replay) {
+    // Playback of a saved recording: rows of
+    // [ms, lx, ly, rx, ry, lrx, lry, rrx, rry, l2, r2, buttons].
+    const controls = document.getElementById("controls");
+    if (params.get("controls") !== "0") controls.style.display = "flex";
+    const loop = params.get("loop") === "1";
+    let rows = [], length = 1, position = 0, speed = 1, playing = true, last = performance.now();
+    const fmt = ms => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${Math.floor(ms / 100) % 10}`;
+    const stateAt = row => ({ lx: row[1], ly: row[2], rx: row[3], ry: row[4], lrx: row[5], lry: row[6], rrx: row[7], rry: row[8],
+                              l2: row[9], r2: row[10], b: row[11], p: "", c: true });
+    function indexAt(ms) {
+      let lo = 0, hi = rows.length - 1;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (rows[mid][0] <= ms) lo = mid; else hi = mid - 1; }
+      return lo;
+    }
+    function tick() {
+      requestAnimationFrame(tick);
+      if (!rows.length) return;
+      const now = performance.now();
+      if (playing) position += (now - last) * speed;
+      last = now;
+      if (position >= length) { position = loop ? 0 : length; if (!loop) setPlaying(false); }
+      const i = indexAt(position);
+      latest = stateAt(rows[i]);
+      // The trail and history are rebuilt from the recording itself, so
+      // seeking and slow motion show them correctly.
+      samples.length = 0;
+      for (let j = indexAt(Math.max(0, position - 3000)); j <= i; ++j)
+        samples.push({ t: now - (position - rows[j][0]), s: stateAt(rows[j]) });
+      el("seek").value = Math.round(position / length * 1000);
+      el("time").textContent = fmt(position) + " / " + fmt(length);
+    }
+    function setPlaying(on) { playing = on; el("play").textContent = on ? "Pause" : "Play"; }
+    function step(frames) { setPlaying(false); position = Math.min(length, Math.max(0, position + frames * 1000 / 60)); }
+    el("play").onclick = () => { if (position >= length) position = 0; setPlaying(!playing); };
+    el("back").onclick = () => step(-1);
+    el("fwd").onclick = () => step(1);
+    el("seek").oninput = e => { position = e.target.value / 1000 * length; };
+    for (const b of document.querySelectorAll(".speed"))
+      b.onclick = () => { speed = parseFloat(b.dataset.speed); document.querySelectorAll(".speed").forEach(x => x.classList.toggle("on", x === b)); };
+    document.addEventListener("keydown", e => {
+      if (e.key === " ") { e.preventDefault(); el("play").click(); }
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
+    });
+    fetch("/recording?name=" + encodeURIComponent(replay)).then(r => r.json()).then(file => {
+      rows = file.samples || [];
+      length = rows.length ? Math.max(1, rows[rows.length - 1][0]) : 1;
+      last = performance.now();
+      requestAnimationFrame(tick);
+    }).catch(() => svg.classList.add("waiting"));
+  } else if (params.get("demo") === "1") {
     // Sticks circling, triggers breathing, and buttons taking turns.
     const demo = t => ({ lx: Math.cos(t * 1.7), ly: Math.sin(t * 1.7), rx: 0.6 * Math.sin(t), ry: 0.6 * Math.cos(t * 1.3),
                          lrx: 0.9 * Math.cos(t * 1.7), lry: 0.9 * Math.sin(t * 1.7), rrx: 0.55 * Math.sin(t), rry: 0.55 * Math.cos(t * 1.3),

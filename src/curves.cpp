@@ -246,11 +246,22 @@ TriggerSettings triggerFrom(const QJsonObject &o)
 
 }
 
+QList<int> Profile::defaultButtons()
+{
+    QList<int> map;
+    for (int i = 0; i < ButtonCount; ++i)
+        map.append(i);
+    return map;
+}
+
 QJsonObject Profile::toJson() const
 {
+    QJsonArray map;
+    for (int b : buttons)
+        map.append(b);
     return {{"name", name}, {"match", match}, {"preset", preset}, {"color", color},
             {"left", stickJson(left)}, {"right", stickJson(right)},
-            {"l2", triggerJson(l2)}, {"r2", triggerJson(r2)}};
+            {"l2", triggerJson(l2)}, {"r2", triggerJson(r2)}, {"buttons", map}};
 }
 
 Profile Profile::fromJson(const QJsonObject &o)
@@ -264,6 +275,9 @@ Profile Profile::fromJson(const QJsonObject &o)
     p.right = stickFrom(o.value("right").toObject());
     p.l2 = triggerFrom(o.value("l2").toObject());
     p.r2 = triggerFrom(o.value("r2").toObject());
+    const QJsonArray map = o.value("buttons").toArray();
+    for (int i = 0; i < ButtonCount && i < map.size(); ++i)
+        p.buttons[i] = std::clamp(map.at(i).toInt(i), int(Unmapped), int(FullR2));
     return p;
 }
 

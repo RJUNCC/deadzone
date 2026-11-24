@@ -14,6 +14,12 @@
 #include "history.h"
 #include "overlay.h"
 #include <QTcpSocket>
+#include "remapper.h"
+#include <fcntl.h>
+#include <linux/uinput.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <cstring>
 #include <QProcess>
 #include <QStandardPaths>
 #include "theme.h"
@@ -45,6 +51,91 @@ static const char *sampleVdfNoOptions =
     "\t\t\"LastPlayed\"\t\t\"1795498573\"\n"
     "\t}\n"
     "}\n";
+
+// A pretend controller made through uinput, standing in for hardware the
+// tests cannot assume: it shows up as a real input device that deadzone
+// reads, and deadzone's virtual pad is read back to see what games get.
+struct FakePad {
+    int fd = -1;
+    QString path;
+
+    FakePad(const char *name, int vendor, int product, int stickMin, int stickMax, int triggerMax, const QList<int> &keys)
+    {
+        fd = ::open("/dev/uinput", O_RDWR | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0)
+            return;
+        ioctl(fd, UI_SET_EVBIT, EV_KEY);
+        ioctl(fd, UI_SET_EVBIT, EV_ABS);
+        for (int key : keys)
+            ioctl(fd, UI_SET_KEYBIT, key);
+        auto axis = [&](int code, int min, int max) {
+            uinput_abs_setup setup{};
+            setup.code = code;
+            setup.absinfo.minimum = min;
+            setup.absinfo.maximum = max;
+            setup.absinfo.value = (min + max) / 2;
+            ioctl(fd, UI_SET_ABSBIT, code);
+            ioctl(fd, UI_ABS_SETUP, &setup);
+        };
+        for (int code : {ABS_X, ABS_Y, ABS_RX, ABS_RY})
+            axis(code, stickMin, stickMax);
+        axis(ABS_Z, 0, triggerMax);
+        axis(ABS_RZ, 0, triggerMax);
+        axis(ABS_HAT0X, -1, 1);
+        axis(ABS_HAT0Y, -1, 1);
+        uinput_setup setup{};
+        setup.id = {BUS_USB, quint16(vendor), quint16(product), 1};
+        std::strncpy(setup.name, name, UINPUT_MAX_NAME_SIZE - 1);
+        ioctl(fd, UI_DEV_SETUP, &setup);
+        ioctl(fd, UI_DEV_CREATE);
+        path = findDevice(name);
+    }
+    ~FakePad()
+    {
+        if (fd >= 0) {
+            ioctl(fd, UI_DEV_DESTROY);
+            ::close(fd);
+        }
+    }
+    void send(int type, int code, int value)
+    {
+        input_event ev[2] = {};
+        ev[0].type = type; ev[0].code = code; ev[0].value = value;
+        ev[1].type = EV_SYN; ev[1].code = SYN_REPORT;
+        [[maybe_unused]] auto written = ::write(fd, ev, sizeof(ev));
+    }
+    static QString findDevice(const QString &name)
+    {
+        for (int tries = 0; tries < 100; ++tries) {
+            for (const QString &entry : QDir("/sys/class/input").entryList({"event*"}, QDir::System | QDir::Dirs)) {
+                QFile file("/sys/class/input/" + entry + "/device/name");
+                if (file.open(QIODevice::ReadOnly) && file.readAll().trimmed() == name.toUtf8()
+                    && ::access(QFile::encodeName("/dev/input/" + entry).constData(), R_OK) == 0)
+                    return "/dev/input/" + entry;
+            }
+            QThread::msleep(20);
+        }
+        return {};
+    }
+};
+
+// What deadzone's virtual pad has sent, read straight from its device.
+struct PadReader {
+    int fd = -1;
+    QHash<int, int> keys, axes;
+    explicit PadReader(const QString &path) { fd = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC); }
+    ~PadReader() { if (fd >= 0) ::close(fd); }
+    void read()
+    {
+        input_event ev[64];
+        ssize_t n;
+        while ((n = ::read(fd, ev, sizeof(ev))) > 0)
+            for (int i = 0; i < int(n / sizeof(input_event)); ++i) {
+                if (ev[i].type == EV_KEY) keys[ev[i].code] = ev[i].value;
+                if (ev[i].type == EV_ABS) axes[ev[i].code] = ev[i].value;
+            }
+    }
+};
 
 class DeadzoneTests : public QObject {
     Q_OBJECT
@@ -629,6 +720,133 @@ private slots:
         QCOMPARE(stats.value("diagonals").toInt(), 1);
         QVERIFY(stats.value("offDiagonal").toDouble() > 3);
         QCOMPARE(backend.flips().first().toMap().value("gap").toDouble(), 150.0);
+    }
+
+    // Opt-in: these create real input devices for a moment, which a running
+    // game or Steam would see. Run with DEADZONE_DEVICE_TESTS=1.
+    void devicesXboxStylePad()
+    {
+        if (!qEnvironmentVariableIsSet("DEADZONE_DEVICE_TESTS"))
+            QSKIP("Set DEADZONE_DEVICE_TESTS=1 to run the device tests");
+        FakePad pad("deadzone test xbox pad", 0x045e, 0x02ea, -32768, 32767, 1023,
+                    {BTN_A, BTN_B, BTN_X, BTN_Y, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR});
+        QVERIFY2(!pad.path.isEmpty(), "uinput not available");
+        Remapper remapper(pad.path, "xpad", true, Presets::make("rocketleague"));
+        remapper.start();
+        const QString out = FakePad::findDevice("Deadzone Xbox 360 Pad");
+        QVERIFY(!out.isEmpty());
+        PadReader reader(out);
+        pad.send(EV_ABS, ABS_X, 32767);
+        pad.send(EV_KEY, BTN_A, 1);
+        pad.send(EV_ABS, ABS_RZ, 1023);
+        QTRY_VERIFY((reader.read(), reader.keys.value(BTN_A) == 1 && reader.axes.value(ABS_RZ) == 255));
+        QCOMPARE(reader.axes.value(ABS_X), 32767);
+        // xpad's X is already the left button: no swap.
+        pad.send(EV_KEY, BTN_X, 1);
+        QTRY_VERIFY((reader.read(), reader.keys.value(BTN_X) == 1));
+        remapper.stop();
+    }
+
+    void devicesPlayStationStylePad()
+    {
+        if (!qEnvironmentVariableIsSet("DEADZONE_DEVICE_TESTS"))
+            QSKIP("Set DEADZONE_DEVICE_TESTS=1 to run the device tests");
+        FakePad pad("deadzone test playstation pad", 0x054c, 0x0ce6, 0, 255, 255,
+                    {BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_TL2, BTN_TR2, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR});
+        QVERIFY2(!pad.path.isEmpty(), "uinput not available");
+        Profile profile = Presets::make("rocketleague");
+        profile.buttons[Cross] = R1;               // Jump moved to R1...
+        profile.buttons[L1] = Profile::FullR2;     // ...and boost on L1.
+        Remapper remapper(pad.path, "playstation", true, profile);
+        remapper.start();
+        PadReader reader(FakePad::findDevice("Deadzone Xbox 360 Pad"));
+        QVERIFY(reader.fd >= 0);
+        // Square is the left button, which the Xbox pad calls X.
+        pad.send(EV_KEY, BTN_WEST, 1);
+        QTRY_VERIFY((reader.read(), reader.keys.value(BTN_X) == 1));
+        pad.send(EV_KEY, BTN_SOUTH, 1);
+        QTRY_VERIFY((reader.read(), reader.keys.value(BTN_TR) == 1));
+        QCOMPARE(reader.keys.value(BTN_A), 0);
+        pad.send(EV_KEY, BTN_TL, 1);
+        QTRY_VERIFY((reader.read(), reader.axes.value(ABS_RZ) == 255));
+        pad.send(EV_KEY, BTN_TL, 0);
+        QTRY_VERIFY((reader.read(), reader.axes.value(ABS_RZ) == 0));
+        // A full-left stick on a 0-255 pad still reaches the Xbox range's end.
+        pad.send(EV_ABS, ABS_X, 0);
+        QTRY_VERIFY((reader.read(), reader.axes.value(ABS_X) == -32767));
+        remapper.stop();
+    }
+
+    void devicesSeeFlipsAndCancels()
+    {
+        if (!qEnvironmentVariableIsSet("DEADZONE_DEVICE_TESTS"))
+            QSKIP("Set DEADZONE_DEVICE_TESTS=1 to run the device tests");
+        FakePad pad("deadzone test flip pad", 0x054c, 0x09cc, 0, 255, 255,
+                    {BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR});
+        QVERIFY(!pad.path.isEmpty());
+        Remapper remapper(pad.path, "playstation", true, Presets::make("rocketleague"));
+        QSignalSpy flips(&remapper, &Remapper::flip);
+        QSignalSpy cancels(&remapper, &Remapper::flipCancel);
+        remapper.start();
+        // Stick back, jump, jump: a back flip; then forward: a half-flip cancel.
+        pad.send(EV_ABS, ABS_Y, 255);
+        pad.send(EV_KEY, BTN_SOUTH, 1);
+        pad.send(EV_KEY, BTN_SOUTH, 0);
+        QThread::msleep(120);
+        pad.send(EV_KEY, BTN_SOUTH, 1);
+        QTRY_COMPARE(flips.size(), 1);
+        QVERIFY(flips.first().at(0).toDouble() >= 100);
+        QVERIFY(flips.first().at(2).toDouble() > 0.9);
+        QThread::msleep(60);
+        pad.send(EV_ABS, ABS_Y, 0);
+        QTRY_COMPARE(cancels.size(), 1);
+        QVERIFY(cancels.first().at(0).toDouble() >= 50);
+        remapper.stop();
+    }
+
+    void flipCancelsAreAttached()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.addFlip(120, 0.05, 0.9);           // A back flip...
+        backend.addFlipCancel(85, 0.0, -0.8);      // ...cancelled forward: a half-flip.
+        const QVariantMap f = backend.flips().first().toMap();
+        QCOMPARE(f.value("cancelKind").toString(), QString("half"));
+        QCOMPARE(f.value("cancel").toDouble(), 85.0);
+        QVERIFY(f.value("cancelOff").toDouble() < 1);
+        QCOMPARE(backend.progress("halfCancel").size(), 1);
+        QCOMPARE(backend.progress("flipGap").first().toMap().value("value").toDouble(), 120.0);
+    }
+
+    void buttonMapRoundTripsAndUndoes()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.setButtonTarget(Cross, R1);
+        backend.setButtonTarget(L1, Profile::FullR2);
+        QCOMPARE(backend.buttonMap().at(Cross).toInt(), int(R1));
+        Profile back;
+        QVERIFY(Codes::decode(Codes::encode(backend.profile()), back));
+        QCOMPARE(back.buttons, backend.profile().buttons);
+        backend.undo();
+        QCOMPARE(backend.buttonMap().at(L1).toInt(), int(L1));
+        backend.resetButtons();
+        QCOMPARE(backend.profile().buttons, Profile::defaultButtons());
+    }
+
+    void dailyProgressAverages()
+    {
+        QTemporaryDir dir;
+        History history(dir.filePath("history.json"));
+        history.addDaily("pad", "flipGap", 100, 1764000000);
+        history.addDaily("pad", "flipGap", 140, 1764000100);
+        history.addDaily("pad", "flipGap", 90, 1764100000);
+        history.addTrainer("pad", "flick", 400, 0, 1764000000);
+        history.addTrainer("pad", "flick", 350, 0, 1764000200);
+        const QVariantList days = history.daily("pad", "flipGap");
+        QCOMPARE(days.size(), 2);
+        QCOMPARE(days.first().toMap().value("value").toDouble(), 120.0);
+        QCOMPARE(history.daily("pad", "trainer:flick").first().toMap().value("value").toDouble(), 350.0);
     }
 
     void profileRoundTripsAndClamps()

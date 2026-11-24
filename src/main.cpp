@@ -27,7 +27,7 @@
 
 namespace {
 
-const char *version = "0.7.0";
+const char *version = "0.8.0";
 
 void usage(FILE *out)
 {

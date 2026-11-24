@@ -280,26 +280,68 @@ void Remapper::readSource()
     }
 }
 
-void Remapper::setButton(int bit, bool down)
+namespace {
+
+// The Xbox pad's key for each LiveButton that is a key.
+const int buttonCodes[] = {BTN_A, BTN_B, BTN_X, BTN_Y, BTN_TL, BTN_TR, BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR};
+
+int bitForCode(int code)
 {
-    if (down)
-        m_buttons |= 1u << bit;
-    else
-        m_buttons &= ~(1u << bit);
+    for (int bit = 0; bit < int(std::size(buttonCodes)); ++bit)
+        if (buttonCodes[bit] == code)
+            return bit;
+    return -1;
 }
 
-void Remapper::handleKey(int code, int value)
+}
+
+void Remapper::setPhysical(int bit, bool down)
 {
-    // Codes here are already the Xbox pad's: A is the bottom button.
-    static const QHash<int, int> bits{{BTN_A, Cross}, {BTN_B, Circle}, {BTN_X, Square}, {BTN_Y, Triangle},
-                                      {BTN_TL, L1}, {BTN_TR, R1}, {BTN_SELECT, Share}, {BTN_START, Options},
-                                      {BTN_MODE, PS}, {BTN_THUMBL, L3}, {BTN_THUMBR, R3}};
-    if (value != 2)
-        setButton(bits.value(code), value != 0);
+    if (bit < 0)
+        return;
+    if (down)
+        m_physical |= 1u << bit;
+    else
+        m_physical &= ~(1u << bit);
+}
+
+// Works out what the game should see from what is held, through the
+// profile's button map, and sends only what changed. Several buttons may
+// share a target; it stays pressed while any of them is held.
+void Remapper::updateVirtual()
+{
+    QList<int> map;
+    {
+        QMutexLocker lock(&m_mutex);
+        map = m_profile.buttons;
+    }
+    quint32 next = 0;
+    for (int bit = 0; bit < Profile::ButtonCount; ++bit)
+        if (m_physical & (1u << bit)) {
+            const int target = map.value(bit, bit);
+            if (target >= 0)
+                next |= 1u << target;
+        }
+    const quint32 changed = next ^ m_gameButtons;
+    if (!changed)
+        return;
+    const quint32 before = m_gameButtons;
+    m_gameButtons = next;
+
+    for (int bit = 0; bit < int(std::size(buttonCodes)); ++bit)
+        if (changed & (1u << bit))
+            emitEvent(EV_KEY, buttonCodes[bit], (next >> bit) & 1);
+    if (changed & ((1u << DpadLeft) | (1u << DpadRight)))
+        emitEvent(EV_ABS, ABS_HAT0X, (next & (1u << DpadRight)) ? 1 : (next & (1u << DpadLeft)) ? -1 : 0);
+    if (changed & ((1u << DpadUp) | (1u << DpadDown)))
+        emitEvent(EV_ABS, ABS_HAT0Y, (next & (1u << DpadDown)) ? 1 : (next & (1u << DpadUp)) ? -1 : 0);
+    // Triggers pressed by a button are applied in flush().
 
     // Rocket League allows a second jump for a while after the first; a
-    // press inside that window is a flip or a double jump.
-    if (value == 1 && bits.value(code, -1) == m_jumpBit) {
+    // press inside that window is a flip or a double jump. Jump is watched
+    // on what the game receives, so remapping is taken into account.
+    const quint32 jump = 1u << m_jumpBit;
+    if ((next & jump) && !(before & jump)) {
         const double now = m_lastEventTime;
         if (m_firstJump >= 0 && now - m_firstJump < 1.5) {
             QPointF out;
@@ -309,10 +351,23 @@ void Remapper::handleKey(int code, int value)
             }
             emit flip((now - m_firstJump) * 1000.0, out.x(), out.y());
             m_firstJump = -1;
+            // Up is forward. A back flip may be cancelled forward (half-flip);
+            // a forward diagonal may be cancelled back (speed flip).
+            m_flipKind = out.y() > 0.4 && std::abs(out.x()) < out.y() ? 1
+                       : out.y() < -0.25 && std::abs(out.x()) > 0.25 ? 2 : 0;
+            m_flipTime = m_flipKind ? now : -1;
         } else {
             m_firstJump = now;
         }
     }
+}
+
+void Remapper::handleKey(int code, int value)
+{
+    // Codes here are already the Xbox pad's: A is the bottom button.
+    if (value == 2)
+        return;
+    const int bit = bitForCode(code);
 
     // PS is held back until it is clear whether it starts a combo: released
     // without one, it reaches the game as a quick press.
@@ -320,28 +375,24 @@ void Remapper::handleKey(int code, int value)
         if (value == 1) {
             m_modeHeld = true;
             m_comboUsed = false;
-        } else if (value == 0) {
+        } else {
             m_modeHeld = false;
             if (!m_comboUsed) {
-                emitEvent(EV_KEY, BTN_MODE, 1);
+                setPhysical(PS, true);
+                updateVirtual();
                 emitEvent(EV_SYN, SYN_REPORT, 0);
-                emitEvent(EV_KEY, BTN_MODE, 0);
+                setPhysical(PS, false);
+                updateVirtual();
             }
         }
         return;
     }
-    emitEvent(EV_KEY, code, value);
+    setPhysical(bit, value != 0);
+    updateVirtual();
 }
 
 void Remapper::handleHat(int code, int value)
 {
-    if (code == ABS_HAT0X) {
-        setButton(DpadLeft, value < 0);
-        setButton(DpadRight, value > 0);
-    } else {
-        setButton(DpadUp, value < 0);
-        setButton(DpadDown, value > 0);
-    }
     if (m_modeHeld) {
         if (code == ABS_HAT0X && value != 0) {
             m_comboUsed = true;
@@ -350,7 +401,14 @@ void Remapper::handleHat(int code, int value)
         // Nothing the d-pad does while PS is held reaches the game.
         return;
     }
-    emitEvent(EV_ABS, code, value);
+    if (code == ABS_HAT0X) {
+        setPhysical(DpadLeft, value < 0);
+        setPhysical(DpadRight, value > 0);
+    } else {
+        setPhysical(DpadUp, value < 0);
+        setPhysical(DpadDown, value > 0);
+    }
+    updateVirtual();
 }
 
 // The rate counts reports over the last half second. A resting controller
@@ -378,11 +436,22 @@ void Remapper::flush()
     const QPointF leftRaw(m_raw[LX], m_raw[LY]), rightRaw(m_raw[RX], m_raw[RY]);
     const QPointF leftOut = Curves::stick(leftRaw, profile.left);
     const QPointF rightOut = Curves::stick(rightRaw, profile.right);
-    const double l2Out = Curves::trigger(m_raw[L2], profile.l2);
-    const double r2Out = Curves::trigger(m_raw[R2], profile.r2);
+    // A button mapped to a trigger presses it all the way.
+    const double l2Out = (m_gameButtons & (1u << Profile::FullL2)) ? 1.0 : Curves::trigger(m_raw[L2], profile.l2);
+    const double r2Out = (m_gameButtons & (1u << Profile::FullR2)) ? 1.0 : Curves::trigger(m_raw[R2], profile.r2);
+
+    if (m_flipTime >= 0) {
+        const double since = m_lastEventTime - m_flipTime;
+        if (since > 0.6) {
+            m_flipTime = -1;
+        } else if ((m_flipKind == 1 && leftOut.y() < -0.6) || (m_flipKind == 2 && leftOut.y() > 0.6)) {
+            emit flipCancel(since * 1000.0, leftOut.x(), leftOut.y());
+            m_flipTime = -1;
+        }
+    }
     {
         QMutexLocker lock(&m_mutex);
-        m_live = {leftRaw, leftOut, rightRaw, rightOut, m_raw[L2], l2Out, m_raw[R2], r2Out, m_buttons, m_rate};
+        m_live = {leftRaw, leftOut, rightRaw, rightOut, m_raw[L2], l2Out, m_raw[R2], r2Out, m_gameButtons & 0x7fffu, m_rate};
     }
 
     if (m_virtual < 0) {

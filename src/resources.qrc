@@ -19,6 +19,8 @@
         <file alias="HealthCard.qml">HealthCard.qml</file>
         <file alias="Trainer.qml">Trainer.qml</file>
         <file alias="FlipCard.qml">FlipCard.qml</file>
+        <file alias="ButtonsCard.qml">ButtonsCard.qml</file>
+        <file alias="ProgressCard.qml">ProgressCard.qml</file>
         <file alias="i18n/en.json">i18n/en.json</file>
         <file alias="RocketLeagueCard.qml">RocketLeagueCard.qml</file>
         <file alias="i18n/es.json">i18n/es.json</file>

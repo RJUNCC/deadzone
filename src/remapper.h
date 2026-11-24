@@ -60,6 +60,10 @@ signals:
     // gap is the time between the two presses; x and y are the left stick
     // as the game received it at the second press.
     void flip(double gapMs, double x, double y);
+    // The stick swung the other way soon after a flip: forward after a back
+    // flip (a half-flip cancel), back after a forward diagonal (a speed
+    // flip cancel). ms is from the flip press; x and y are the stick then.
+    void flipCancel(double ms, double x, double y);
     void started(bool active);
     void failed(const QString &message);
     void disconnected();
@@ -76,7 +80,8 @@ private:
     void emitEvent(int type, int code, int value);
     void handleKey(int code, int value);
     void handleHat(int code, int value);
-    void setButton(int bit, bool down);
+    void setPhysical(int bit, bool down);
+    void updateVirtual();
     void noteReport(const timeval &time);
     void uploadEffect(int requestId);
     void eraseEffect(int requestId);
@@ -103,7 +108,10 @@ private:
     double m_firstJump = -1;
     double m_lastEventTime = 0;
     bool m_modeHeld = false, m_comboUsed = false;
-    quint32 m_buttons = 0;
+    quint32 m_physical = 0;   // What is held on the controller.
+    quint32 m_gameButtons = 0;   // What the game receives after remapping.
+    double m_flipTime = -1;
+    int m_flipKind = 0;       // 1 watching for a half-flip cancel, 2 for a speed flip cancel.
     std::vector<double> m_reports;   // Recent report times, for the rate.
     double m_rate = 0;
 

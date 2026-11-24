@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QObject>
@@ -76,6 +77,9 @@ class Backend : public QObject {
     Q_PROPERTY(QVariantMap flipStats READ flipStats NOTIFY flipsChanged)
     Q_PROPERTY(int batteryMinutes READ batteryMinutes NOTIFY batteryChanged)
     Q_PROPERTY(bool steamRunning READ steamRunning NOTIFY setupChanged)
+    Q_PROPERTY(bool inputRecording READ inputRecording NOTIFY recordingChanged)
+    Q_PROPERTY(int inputRecordingSeconds READ inputRecordingSeconds NOTIFY recordingChanged)
+    Q_PROPERTY(QVariantList inputRecordings READ inputRecordings NOTIFY recordingChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY sessionChanged)
     Q_PROPERTY(int sessionElapsed READ sessionElapsed NOTIFY sessionChanged)
     Q_PROPERTY(int sessionDuration READ sessionDuration NOTIFY sessionChanged)
@@ -172,6 +176,10 @@ public:
     static QString withLaunchOptions(const QString &vdf, const QString &options, const QString &app = "252950");
     // A flip as the analyzer sees it, for the list and the stats.
     static QVariantMap describeFlip(double gapMs, double x, double y, double dodge);
+    bool inputRecording() const { return m_inputRecording; }
+    int inputRecordingSeconds() const { return m_inputRecording ? int(m_inputClock.elapsed() / 1000) : 0; }
+    QVariantList inputRecordings() const;
+    static QString recordingsDirectory();
     bool recording() const { return m_recording; }
     int sessionElapsed() const { return m_recording ? int(m_sessionClock.elapsed() / 1000) : m_sessionSeconds; }
     int sessionDuration() const { return m_sessionDuration; }
@@ -255,6 +263,21 @@ public:
     // Returns an empty string on success, or what went wrong.
     Q_INVOKABLE QString applyLaunchOptions();
     Q_INVOKABLE void clearFlips();
+    // Button remapping for the current profile: what each physical button
+    // (a LiveButton bit) sends, as Profile::buttons.
+    Q_INVOKABLE QVariantList buttonMap() const;
+    Q_INVOKABLE void setButtonTarget(int button, int target);
+    Q_INVOKABLE void resetButtons();
+    // Progress by day for a metric: flipGap, offDiagonal, halfCancel,
+    // speedCancel, trainer:flick, trainer:control.
+    Q_INVOKABLE QVariantList progress(const QString &metric) const;
+    // Records what the controller does, for playing back on the overlay.
+    Q_INVOKABLE void startInputRecording();
+    Q_INVOKABLE QString stopInputRecording();
+    Q_INVOKABLE void deleteInputRecording(const QString &name);
+    Q_INVOKABLE QString replayUrl(const QString &name, bool forObs) const;
+    // For tests: as if the remapper had seen a cancel.
+    void addFlipCancel(double ms, double x, double y) { onFlipCancel(ms, x, y); }
     // For tests: as if the remapper had seen a flip.
     void addFlip(double gapMs, double x, double y) { onFlip(gapMs, x, y); }
 
@@ -312,6 +335,7 @@ signals:
     void historyChanged();
     void setupChanged();
     void flipsChanged();
+    void recordingChanged();
 
 private:
     struct Worker {
@@ -347,6 +371,7 @@ private:
     QString ignoreList() const;
     void refreshLaunchOptions();
     void onFlip(double gapMs, double x, double y);
+    void onFlipCancel(double ms, double x, double y);
     void checkHolders();
     QString uniqueName(const QString &base) const;
 
@@ -396,6 +421,9 @@ private:
     bool m_steamRunning = false;
     int m_jumpButton = 0;
     QVariantList m_flips;
+    bool m_inputRecording = false;
+    QElapsedTimer m_inputClock;
+    QJsonArray m_inputSamples;
     QList<QPair<qint64, int>> m_drops;   // When the battery reached each lower percentage.
     double m_drain = 0;
     QString m_switchedTo;

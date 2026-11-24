@@ -13,6 +13,16 @@ Rectangle {
     readonly property var stats: backend.flipStats
     readonly property var last: backend.flips.length > 0 ? backend.flips[0] : null
     readonly property real dodge: { backend.gameRevision; return backend.gameSetting("dodge") }
+    // Cancels across the recent flips: half-flips and speed flips.
+    readonly property var cancels: {
+        const out = { half: [], speed: [], speedAngle: [] }
+        for (const f of backend.flips) {
+            if (f.cancelKind === "half") out.half.push(f.cancel)
+            if (f.cancelKind === "speed") { out.speed.push(f.cancel); out.speedAngle.push(Math.min(f.angle, 360 - f.angle)) }
+        }
+        return out
+    }
+    function average(list) { return list.reduce((a, b) => a + b, 0) / Math.max(1, list.length) }
 
     color: "#17171a"
     radius: theme.radius
@@ -50,7 +60,7 @@ Rectangle {
                 color: "#e4e4e7"
             }
             InfoIcon {
-                text: qsTr("Every time you press jump twice within a second and a half, deadzone times the gap between the presses to the millisecond and notes where the left stick was, as the game received it. Past your Dodge Deadzone that is a flip; inside it, a double jump. It watches the controller, not the game, so it also counts presses on the ground.")
+                text: qsTr("Every time you press jump twice within a second and a half, deadzone times the gap between the presses to the millisecond and notes where the left stick was, as the game received it. Past your Dodge Deadzone that is a flip; inside it, a double jump. After a back flip, pushing the stick forward within 0.6 seconds counts as a half-flip cancel; after a forward diagonal, pulling back counts as a speed flip cancel. It watches the controller, not the game, so it cannot tell whether a cancel worked, and it also counts presses on the ground.")
             }
             Item { Layout.fillWidth: true }
             Label { text: qsTr("Jump button"); color: "#c9c9cf"; font.pixelSize: 13 }
@@ -98,6 +108,16 @@ Rectangle {
                 }
                 color: "#8b8b93"
             }
+            Label {
+                visible: root.last !== null && root.last.cancel !== undefined
+                text: {
+                    if (!root.last || root.last.cancel === undefined) return ""
+                    return (root.last.cancelKind === "half" ? qsTr("Half-flip cancel %1 ms after the flip, %2° from straight forward")
+                                                            : qsTr("Speed flip cancel %1 ms after the flip, %2° from straight back"))
+                           .arg(Math.round(root.last.cancel)).arg(Math.round(root.last.cancelOff))
+                }
+                color: "#8b8b93"
+            }
         }
 
         // Across the recent flips.
@@ -110,7 +130,9 @@ Rectangle {
                     [qsTr("Flips"), root.stats.count],
                     [qsTr("Average gap"), qsTr("%1 ms").arg(Math.round(root.stats.averageGap))],
                     [qsTr("Directional"), qsTr("%1 of %2").arg(root.stats.directional).arg(root.stats.count)],
-                    [qsTr("Diagonals"), root.stats.diagonals > 0 ? qsTr("%1° off on average").arg(root.stats.offDiagonal.toLocaleString(Qt.locale(), 'f', 1)) : "–"]
+                    [qsTr("Diagonals"), root.stats.diagonals > 0 ? qsTr("%1° off on average").arg(root.stats.offDiagonal.toLocaleString(Qt.locale(), 'f', 1)) : "–"],
+                    [qsTr("Half-flip cancels"), root.cancels.half.length > 0 ? qsTr("%1 · %2 ms on average").arg(root.cancels.half.length).arg(Math.round(root.average(root.cancels.half))) : "–"],
+                    [qsTr("Speed flip cancels"), root.cancels.speed.length > 0 ? qsTr("%1 · %2 ms, %3° from forward").arg(root.cancels.speed.length).arg(Math.round(root.average(root.cancels.speed))).arg(Math.round(root.average(root.cancels.speedAngle))) : "–"]
                 ]
                 delegate: ColumnLayout {
                     required property var modelData

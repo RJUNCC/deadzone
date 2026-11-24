@@ -14,6 +14,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QThread>
+#include <QUrl>
 
 #include "remapper.h"
 
@@ -50,7 +51,7 @@ const char *ruleScript =
     "  case \"$path\" in\n"
     "    /dev/hidraw*) if [ \"$mode\" = hide ]; then setfacl -x \"u:$user\" \"$path\" 2>/dev/null || true;\n"
     "                  else setfacl -m \"u:$user:rw\" \"$path\" 2>/dev/null || true; fi ;;\n"
-    "    /sys/*/brightness) chown \"$user\" \"$path\" 2>/dev/null || true ;;\n"
+    "    /sys/*/brightness|/sys/*/multi_intensity) chown \"$user\" \"$path\" 2>/dev/null || true ;;\n"
     "  esac\n"
     "done\n";
 
@@ -63,6 +64,7 @@ Backend::Backend(const QString &configPath, bool watchDevices, QObject *parent, 
                 : configPath.isEmpty() ? QString() : QFileInfo(configPath).absolutePath() + "/history.json")
 {
     connect(&m_overlay, &OverlayServer::clientsChanged, this, &Backend::overlayChanged);
+    m_overlay.setRecordingsDirectory(recordingsDirectory());
     // A newly opened overlay gets the current state straight away, not on
     // the next stick movement.
     connect(&m_overlay, &OverlayServer::clientsChanged, this, &Backend::publishOverlay);
@@ -521,10 +523,130 @@ QVariantMap Backend::describeFlip(double gapMs, double x, double y, double dodge
 
 void Backend::onFlip(double gapMs, double x, double y)
 {
-    m_flips.prepend(describeFlip(gapMs, x, y, m_game.value("dodge", 0.5)));
+    const QVariantMap flip = describeFlip(gapMs, x, y, m_game.value("dodge", 0.5));
+    m_flips.prepend(flip);
     while (m_flips.size() > 40)
         m_flips.removeLast();
+    const QString id = controllerId().isEmpty() ? "unknown" : controllerId();
+    m_history.addDaily(id, "flipGap", gapMs);
+    if (flip.value("directional").toBool() && flip.value("diagonal").toBool())
+        m_history.addDaily(id, "offDiagonal", flip.value("offDiagonal").toDouble());
     emit flipsChanged();
+    emit historyChanged();
+}
+
+// A cancel belongs to the flip just before it: forward after a back flip
+// is a half-flip, back after a forward diagonal a speed flip.
+void Backend::onFlipCancel(double ms, double x, double y)
+{
+    if (m_flips.isEmpty())
+        return;
+    QVariantMap flip = m_flips.first().toMap();
+    const bool half = flip.value("y").toDouble() > 0;
+    // How far the cancel was from straight forward or straight back.
+    const double off = std::abs(std::atan2(x, half ? -y : y)) * 180 / M_PI;
+    flip.insert("cancel", ms);
+    flip.insert("cancelKind", half ? "half" : "speed");
+    flip.insert("cancelOff", off);
+    m_flips[0] = flip;
+    m_history.addDaily(controllerId().isEmpty() ? "unknown" : controllerId(), half ? "halfCancel" : "speedCancel", ms);
+    emit flipsChanged();
+    emit historyChanged();
+}
+
+QVariantList Backend::buttonMap() const
+{
+    QVariantList list;
+    for (int target : profile().buttons)
+        list.append(target);
+    return list;
+}
+
+void Backend::setButtonTarget(int button, int target)
+{
+    if (button < 0 || button >= Profile::ButtonCount || target < Profile::Unmapped || target > Profile::FullR2
+        || profile().buttons.value(button) == target)
+        return;
+    pushUndo();
+    editable().buttons[button] = target;
+    applyProfile();
+    save();
+}
+
+void Backend::resetButtons()
+{
+    if (profile().buttons == Profile::defaultButtons())
+        return;
+    pushUndo();
+    editable().buttons = Profile::defaultButtons();
+    applyProfile();
+    save();
+}
+
+QVariantList Backend::progress(const QString &metric) const
+{
+    const QString id = metric.startsWith("trainer:") ? (controllerId().isEmpty() ? "unknown" : controllerId())
+                                                     : (controllerId().isEmpty() ? "unknown" : controllerId());
+    return m_history.daily(id, metric);
+}
+
+QString Backend::recordingsDirectory()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::MoviesLocation) + "/deadzone inputs";
+}
+
+void Backend::startInputRecording()
+{
+    m_inputSamples = QJsonArray();
+    m_inputRecording = true;
+    m_inputClock.start();
+    emit recordingChanged();
+}
+
+// Saved as JSON: one row per frame of
+// [ms, lx, ly, rx, ry, lrx, lry, rrx, rry, l2, r2, buttons].
+QString Backend::stopInputRecording()
+{
+    if (!m_inputRecording)
+        return {};
+    m_inputRecording = false;
+    QDir().mkpath(recordingsDirectory());
+    const QString name = "inputs-" + QDateTime::currentDateTime().toString("yyyy-MM-dd-HHmmss") + ".json";
+    const QJsonObject file{{"version", 1}, {"fps", 60}, {"profile", profile().name},
+                           {"started", QDateTime::currentDateTime().addMSecs(-m_inputClock.elapsed()).toString(Qt::ISODate)},
+                           {"samples", m_inputSamples}};
+    QSaveFile out(recordingsDirectory() + "/" + name);
+    if (out.open(QIODevice::WriteOnly)) {
+        out.write(QJsonDocument(file).toJson(QJsonDocument::Compact));
+        out.commit();
+    }
+    m_inputSamples = QJsonArray();
+    emit recordingChanged();
+    return name;
+}
+
+QVariantList Backend::inputRecordings() const
+{
+    QVariantList list;
+    const QFileInfoList files = QDir(recordingsDirectory()).entryInfoList({"inputs-*.json"}, QDir::Files, QDir::Name | QDir::Reversed);
+    for (const QFileInfo &info : files)
+        list.append(QVariantMap{{"name", info.fileName()}, {"size", info.size()}, {"when", info.lastModified()}});
+    return list;
+}
+
+void Backend::deleteInputRecording(const QString &name)
+{
+    // Only plain names inside the recordings folder.
+    if (name.contains('/') || !name.startsWith("inputs-") || !name.endsWith(".json"))
+        return;
+    QFile::remove(recordingsDirectory() + "/" + name);
+    emit recordingChanged();
+}
+
+QString Backend::replayUrl(const QString &name, bool forObs) const
+{
+    return overlayUrl() + "?replay=" + QUrl::toPercentEncoding(name) + "&trail=1&history=1"
+           + (forObs ? "&controls=0&loop=1" : "") + "&accent=" + QColor(profileColor()).name().mid(1);
 }
 
 void Backend::clearFlips()
@@ -1334,6 +1456,7 @@ void Backend::startWorker(const GamepadInfo &info)
     worker.remapper->moveToThread(worker.thread);
     connect(worker.remapper, &Remapper::profileStep, this, &Backend::stepProfile);
     connect(worker.remapper, &Remapper::flip, this, &Backend::onFlip);
+    connect(worker.remapper, &Remapper::flipCancel, this, &Backend::onFlipCancel);
     connect(worker.thread, &QThread::started, worker.remapper, &Remapper::start);
 
     const QString id = info.id;
@@ -1384,6 +1507,19 @@ void Backend::pollLive()
     LiveState state;
     if (m_selected >= 0 && m_selected < m_devices.size() && m_workers.contains(m_devices.at(m_selected).id))
         state = m_workers.value(m_devices.at(m_selected).id).remapper->live();
+
+    if (m_inputRecording) {
+        auto r = [](double v) { return std::round(v * 1000) / 1000; };
+        m_inputSamples.append(QJsonArray{
+            m_inputClock.elapsed(), r(state.leftOut.x()), r(state.leftOut.y()), r(state.rightOut.x()), r(state.rightOut.y()),
+            r(state.leftRaw.x()), r(state.leftRaw.y()), r(state.rightRaw.x()), r(state.rightRaw.y()),
+            r(state.l2Out), r(state.r2Out), qint64(state.buttons)});
+        if (m_inputSamples.size() % 60 == 0)
+            emit recordingChanged();
+        // Half an hour is plenty for one clip and keeps files reasonable.
+        if (m_inputClock.elapsed() > 30 * 60 * 1000)
+            stopInputRecording();
+    }
 
     if (m_recording) {
         m_session.add(state.leftRaw, state.rightRaw, state.l2Raw, state.r2Raw);
@@ -1443,7 +1579,9 @@ QString Backend::ruleText(const QStringList &ids, const QString &lightbarUser)
     if (validUser.match(lightbarUser).hasMatch())
         text += QString("# Lets %1 set PlayStation controller lightbars.\n"
                         "ACTION==\"add\", SUBSYSTEM==\"leds\", KERNEL==\"*:red|*:green|*:blue|*:global\", "
-                        "DRIVERS==\"playstation|sony\", RUN+=\"/usr/bin/chown %1 /sys%p/brightness\"\n").arg(lightbarUser);
+                        "DRIVERS==\"playstation|sony\", RUN+=\"/usr/bin/chown %1 /sys%p/brightness\"\n"
+                        "ACTION==\"add\", SUBSYSTEM==\"leds\", KERNEL==\"*:rgb:indicator\", DRIVERS==\"playstation\", "
+                        "RUN+=\"/usr/bin/chown %1 /sys%p/brightness /sys%p/multi_intensity\"\n").arg(lightbarUser);
     return text;
 }
 

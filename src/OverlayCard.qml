@@ -203,5 +203,80 @@ Rectangle {
                 }
             }
         }
+        // Input recording, for playing a clip's inputs back on the overlay.
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            SectionLabel { text: qsTr("Input recording") }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Label {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: "#8b8b93"
+                    font.pixelSize: 12
+                    text: backend.inputRecording
+                          ? qsTr("Recording your inputs: %1. Stop when the clip is done.").arg(Math.floor(backend.inputRecordingSeconds / 60) + ":" + String(backend.inputRecordingSeconds % 60).padStart(2, "0"))
+                          : qsTr("Start this together with an OBS recording. Afterwards the overlay can play the inputs back, with slow motion and frame stepping, to add to the video or study a mechanic.")
+                }
+                Button {
+                    text: backend.inputRecording ? qsTr("Stop") : qsTr("Record inputs")
+                    focusPolicy: Qt.NoFocus
+                    Material.foreground: backend.inputRecording ? "#ffffff" : theme.accentForeground
+                    background: Rectangle {
+                        implicitHeight: 36
+                        implicitWidth: 120
+                        radius: Math.min(4, theme.radius)
+                        color: backend.inputRecording ? "#dc2626" : (parent.down ? Qt.darker(theme.accent, 1.2) : theme.accent)
+                    }
+                    onClicked: backend.inputRecording ? backend.stopInputRecording() : backend.startInputRecording()
+                }
+            }
+            Repeater {
+                model: backend.inputRecordings.slice(0, 6)
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label {
+                        Layout.fillWidth: true
+                        text: Qt.formatDateTime(modelData.when, Qt.locale().dateTimeFormat(Locale.ShortFormat))
+                        color: "#c9c9cf"
+                        font.pixelSize: 13
+                    }
+                    Button {
+                        text: qsTr("Play")
+                        flat: true
+                        focusPolicy: Qt.NoFocus
+                        Material.roundedScale: theme.radius
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 300
+                        ToolTip.text: qsTr("Opens the replay in your browser, with play, pause, slow motion, and frame stepping")
+                        onClicked: { backend.overlayEnabled = true; Qt.openUrlExternally(backend.replayUrl(modelData.name, false)) }
+                    }
+                    Button {
+                        id: copyReplay
+                        property bool copied: false
+                        text: copied ? qsTr("Copied") : qsTr("Copy for OBS")
+                        flat: true
+                        focusPolicy: Qt.NoFocus
+                        Material.roundedScale: theme.radius
+                        ToolTip.visible: hovered && !copied
+                        ToolTip.delay: 300
+                        ToolTip.text: qsTr("An address for an OBS Browser Source that plays this recording on repeat, without controls")
+                        onClicked: { backend.overlayEnabled = true; clipboard.setText(backend.replayUrl(modelData.name, true)); copied = true; copyReplayTimer.restart() }
+                        Timer { id: copyReplayTimer; interval: 1500; onTriggered: copyReplay.copied = false }
+                    }
+                    Button {
+                        text: qsTr("Delete")
+                        flat: true
+                        focusPolicy: Qt.NoFocus
+                        Material.roundedScale: theme.radius
+                        onClicked: backend.deleteInputRecording(modelData.name)
+                    }
+                }
+            }
+        }
     }
 }

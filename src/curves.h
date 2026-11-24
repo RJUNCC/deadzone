@@ -45,7 +45,13 @@ struct Profile {
     QString color;          // Shown on the lightbar when switched to; empty picks one by position.
     StickSettings left, right;
     TriggerSettings l2, r2;
+    // Button remapping: for each physical button (a LiveButton bit), what the
+    // game receives. 0-14 are buttons, FullL2 and FullR2 press a trigger all
+    // the way, Unmapped sends nothing.
+    enum { FullL2 = 15, FullR2 = 16, Unmapped = -1, ButtonCount = 15 };
+    QList<int> buttons = defaultButtons();
 
+    static QList<int> defaultButtons();
     bool operator==(const Profile &) const = default;
 
     QJsonObject toJson() const;

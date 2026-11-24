@@ -1,0 +1,19 @@
+#!/bin/sh
+# Packs the committed source as dist/deadzone-<version>.tar.gz, the file a
+# GitHub release and the AUR package build from, and prints its checksum.
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+cd "$ROOT"
+VERSION="$(sed -n 's/^pkgver=//p' pkgbuild/PKGBUILD)"
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Commit your changes first: the release is built from git." >&2
+  exit 1
+fi
+mkdir -p dist
+git archive --format=tar.gz --prefix="deadzone-$VERSION/" -o "dist/deadzone-$VERSION.tar.gz" HEAD
+SUM="$(sha256sum "dist/deadzone-$VERSION.tar.gz" | cut -d' ' -f1)"
+sed "s/^pkgver=.*/pkgver=$VERSION/; s/^sha256sums=.*/sha256sums=('$SUM')/" dist/aur/PKGBUILD.in > dist/aur/PKGBUILD
+echo "dist/deadzone-$VERSION.tar.gz"
+echo "sha256 $SUM"
+echo "Tag it with: git tag v$VERSION"

@@ -59,7 +59,9 @@ ApplicationWindow {
         ["Q", qsTr("Quit")]
     ]
 
-    readonly property bool hasController: backend.controllers.length > 0
+    // Screenshots for the README are taken without a controller attached.
+    property bool previewWithoutController: false
+    readonly property bool hasController: backend.controllers.length > 0 || previewWithoutController
 
     // Right-to-left languages mirror the window; the Translator sets the
     // application's layout direction.
@@ -376,6 +378,12 @@ ApplicationWindow {
                             }
                         }
                     }
+                    ButtonsCard {
+                        visible: win.hasController
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 20
+                        Layout.rightMargin: 20
+                    }
                     Item { Layout.preferredHeight: 12 }
                 }
             }
@@ -462,6 +470,11 @@ ApplicationWindow {
                                 onClicked: win.trainerVisible = true
                             }
                         }
+                    }
+                    ProgressCard {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 20
+                        Layout.rightMargin: 20
                     }
                     FlipCard {
                         Layout.fillWidth: true

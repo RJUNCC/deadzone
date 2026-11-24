@@ -26,6 +26,13 @@ public:
     void setDrain(const QString &controller, double percentPerHour);
     double drain(const QString &controller) const;
 
+    // Adds one measurement to today's totals for a metric (flipGap,
+    // offDiagonal, halfCancel, speedCancel), so progress can be charted by day.
+    void addDaily(const QString &controller, const QString &metric, double value, qint64 when = 0);
+    // Per day, oldest first: {day: "2026-11-24", value: average}. Trainer
+    // modes ("trainer:flick") give the day's best time instead.
+    QVariantList daily(const QString &controller, const QString &metric) const;
+
     static QString defaultPath();
 
 private:
