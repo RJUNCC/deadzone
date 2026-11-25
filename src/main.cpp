@@ -81,8 +81,9 @@ BOOL WINAPI onConsoleEvent(DWORD)
 void attachConsole()
 {
     if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-        std::freopen("CONOUT$", "w", stdout);
-        std::freopen("CONOUT$", "w", stderr);
+        FILE *ignored = nullptr;
+        freopen_s(&ignored, "CONOUT$", "w", stdout);
+        freopen_s(&ignored, "CONOUT$", "w", stderr);
     }
 }
 

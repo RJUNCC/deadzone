@@ -49,7 +49,15 @@ jobs:
           Copy-Item windeps/SDL3/lib/x64/SDL3.dll $out
           Copy-Item dist/windows/README.txt $out
           Copy-Item LICENSE $out/LICENSE.txt
-          windeployqt --release --qmldir src --no-translations --no-system-d3d-compiler --no-opengl-sw "$out/deadzone.exe"
+          windeployqt --release --qmldir src --no-translations --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime "$out/deadzone.exe"
+          # Only the Material style is used, Qt Quick draws with Direct3D 11
+          # (no D3D12 shader compiler needed), and QML debugging is off.
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue `
+            "$out/qmltooling", "$out/vc_redist*.exe", "$out/dxcompiler.dll", "$out/dxil.dll", `
+            "$out/Qt6QuickControls2Fusion*.dll", "$out/Qt6QuickControls2Imagine*.dll", `
+            "$out/Qt6QuickControls2Universal*.dll", "$out/Qt6QuickControls2FluentWinUI3*.dll", `
+            "$out/qml/QtQuick/Controls/Fusion", "$out/qml/QtQuick/Controls/Imagine", `
+            "$out/qml/QtQuick/Controls/Universal", "$out/qml/QtQuick/Controls/FluentWinUI3"
           # The Visual C++ runtime, so nothing else needs installing.
           $crt = Get-ChildItem "$env:VCToolsRedistDir/x64" -Directory -Filter 'Microsoft.VC*.CRT' | Select-Object -First 1
           Copy-Item "$($crt.FullName)/*.dll" $out
