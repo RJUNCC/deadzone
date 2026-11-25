@@ -28,6 +28,9 @@ asks for permission once) and can start Deadzone when you sign in.
 To give games the real controller back, turn off "Hide the real controller
 from games" at the bottom of the window.
 
+HidHide lets deadzone.exe see the hidden controller by its location, so
+if you move this folder, turn hiding off first and back on afterwards.
+
 Command line
 ------------
   deadzone.exe list    controllers Deadzone can see

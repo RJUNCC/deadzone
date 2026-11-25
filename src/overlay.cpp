@@ -98,7 +98,7 @@ void OverlayServer::respond(QTcpSocket *socket)
             type = "text/plain";
         }
     } else if (path == "/state") {
-        body = m_last.isEmpty() ? "{}" : m_last;
+        body = m_last.isEmpty() ? QByteArray("{}") : m_last;
         type = "application/json";
     } else {
         status = "404 Not Found";

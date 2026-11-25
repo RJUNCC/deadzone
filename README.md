@@ -219,16 +219,37 @@ lightbar works on the DualShock 4 and DualSense.
 
 ## Installing
 
+### Linux
+
 From the AUR, once published: `yay -S deadzone`. From source:
 
 ```sh
-git clone <this repository> && cd deadzone
+git clone https://github.com/RJUNCC/deadzone.git && cd deadzone
 bin/install
 ```
 
 Deadzone needs read access to `/dev/input/event*` and write access to
 `/dev/uinput`, which Steam's udev rules (or `game-devices-udev`) give the
 logged-in user.
+
+### Windows
+
+Download `deadzone-<version>-windows-x64.zip` from the
+[latest release](https://github.com/RJUNCC/deadzone/releases/latest), unzip
+it anywhere, and run `deadzone.exe`. It needs two free drivers, the same
+ones DS4Windows uses; install both and restart once:
+
+- [ViGEmBus](https://github.com/nefarius/ViGEmBus/releases/latest) creates
+  the virtual Xbox pad.
+- [HidHide](https://github.com/nefarius/HidHide/releases/latest) hides the
+  real controller from games, in place of the Linux udev rule and launch
+  options.
+
+On Windows, "Keep running without the window" adds Deadzone to the programs
+that start when you sign in, and the setup steps in the Rocket League tab
+are shorter: install the drivers, hide the controller, keep it running.
+A wired Xbox 360 pad cannot be remapped on Windows, because Deadzone's own
+virtual pad looks the same.
 
 ## Building
 
@@ -239,6 +260,12 @@ DEADZONE_DEVICE_TESTS=1 bin/test   # also drive pretend controllers end to end (
 bin/release    # source tarball and AUR PKGBUILD in dist/
 bin/install    # makepkg -fsi, adds it to the app launcher
 ```
+
+The Windows build runs on GitHub Actions (`.github/workflows/windows.yml`)
+for every push and attaches the zip to a version tag's release. To build
+it by hand, in a Visual Studio developer prompt with Qt 6 for MSVC:
+`bin/windows-deps` (from Git Bash) to fetch SDL 3 and ViGEmClient, then
+`qmake deadzone.pro` and `nmake`.
 
 Deadzone needs read access to `/dev/input/event*` and write access to
 `/dev/uinput`. Steam's udev rules (or `game-devices-udev`) grant both to the

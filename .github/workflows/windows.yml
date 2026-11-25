@@ -36,7 +36,7 @@ jobs:
           mkdir build-win
           cd build-win
           qmake ..\deadzone.pro
-          nmake
+          nmake /K
 
       - name: Package
         shell: pwsh
@@ -51,7 +51,8 @@ jobs:
           Copy-Item LICENSE $out/LICENSE.txt
           windeployqt --release --qmldir src --no-translations --no-system-d3d-compiler --no-opengl-sw "$out/deadzone.exe"
           # The Visual C++ runtime, so nothing else needs installing.
-          Copy-Item "$env:VCToolsRedistDir/x64/Microsoft.VC143.CRT/*.dll" $out
+          $crt = Get-ChildItem "$env:VCToolsRedistDir/x64" -Directory -Filter 'Microsoft.VC*.CRT' | Select-Object -First 1
+          Copy-Item "$($crt.FullName)/*.dll" $out
           # Fails here if a DLL is missing.
           $check = Start-Process "$out/deadzone.exe" -ArgumentList '--version' -Wait -PassThru -NoNewWindow
           if ($check.ExitCode -ne 0) { throw "deadzone.exe --version exited with $($check.ExitCode)" }
