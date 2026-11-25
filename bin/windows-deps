@@ -1,0 +1,28 @@
+#!/bin/sh
+# Fetches what the Windows build links against into windeps/: SDL 3's
+# development release for Visual Studio, and ViGEmClient's source, which is
+# compiled into deadzone.exe. Runs in Git Bash or on Linux.
+set -eu
+
+SDL_VERSION=3.4.20
+VIGEM_COMMIT=b66d02d57e32cc8595369c53418b843e958649b4
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+mkdir -p "$ROOT/windeps"
+cd "$ROOT/windeps"
+
+if [ ! -d SDL3 ]; then
+  curl -fsSL -o sdl3.zip "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VERSION/SDL3-devel-$SDL_VERSION-VC.zip"
+  unzip -q sdl3.zip
+  mv "SDL3-$SDL_VERSION" SDL3
+  rm sdl3.zip
+fi
+
+if [ ! -d ViGEmClient ]; then
+  curl -fsSL -o vigem.tar.gz "https://github.com/nefarius/ViGEmClient/archive/$VIGEM_COMMIT.tar.gz"
+  tar -xzf vigem.tar.gz
+  mv "ViGEmClient-$VIGEM_COMMIT" ViGEmClient
+  rm vigem.tar.gz
+fi
+
+echo "SDL $SDL_VERSION and ViGEmClient $VIGEM_COMMIT are in $ROOT/windeps"

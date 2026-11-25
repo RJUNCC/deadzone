@@ -3,7 +3,13 @@
 #include <QList>
 #include <QString>
 
-// A physical controller found under /dev/input.
+#include <QColor>
+
+class QRecursiveMutex;
+
+// A physical controller: found under /dev/input on Linux, through SDL on
+// Windows, where path, lightbar, and battery are "sdl:<instance id>" and
+// hidraw is the HID device instance that HidHide hides.
 struct GamepadInfo {
     QString path;       // /dev/input/eventN
     QString name;
@@ -29,4 +35,16 @@ QList<GamepadInfo> scan(const QString &inputDirectory = "/dev/input",
 // button), unlike xpad, whose BTN_X is the left one. Games see an Xbox 360
 // pad, so these controllers need their north and west buttons swapped.
 bool positionalFaceButtons(const QString &driver);
+
+// The controller's charge, or -1 when it does not say.
+void battery(const GamepadInfo &info, int &percent, bool &charging);
+
+#ifdef _WIN32
+// Sets a lightbar through SDL; target is GamepadInfo::lightbar.
+bool setLed(const QString &target, const QColor &color);
+// Starts SDL's gamepad support once, from any thread.
+void initSdl();
+// Held around every SDL call, which come from several threads.
+QRecursiveMutex &sdlLock();
+#endif
 }

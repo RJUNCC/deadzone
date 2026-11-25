@@ -3,7 +3,12 @@
 #include <QFile>
 #include <algorithm>
 #include <cmath>
+
+#include "gamepads.h"
+
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 namespace {
 
@@ -19,6 +24,12 @@ bool writeValue(const QString &path, int value)
     return file.open(QIODevice::WriteOnly) && file.write(QByteArray::number(value)) > 0;
 }
 
+// On Windows a target is a controller SDL drives, "sdl:<instance id>".
+bool viaSdl(const QString &target)
+{
+    return target.startsWith(QLatin1String("sdl:"));
+}
+
 // A multicolor LED (DualSense) takes "r g b" in one file; the DualShock 4
 // has a file per color.
 bool multicolor(const QString &target)
@@ -28,6 +39,9 @@ bool multicolor(const QString &target)
 
 QColor readColor(const QString &target)
 {
+    // SDL cannot read a lightbar back, so there is no color to restore.
+    if (viaSdl(target))
+        return {};
     if (multicolor(target)) {
         QFile file(target + "/multi_intensity");
         if (!file.open(QIODevice::ReadOnly))
@@ -41,6 +55,10 @@ QColor readColor(const QString &target)
 
 bool writeColor(const QString &target, const QColor &color, const QColor &last, bool fresh)
 {
+#ifdef _WIN32
+    if (viaSdl(target))
+        return Gamepads::setLed(target, color);
+#endif
     if (multicolor(target)) {
         QFile file(target + "/multi_intensity");
         const bool ok = file.open(QIODevice::WriteOnly)
@@ -133,9 +151,13 @@ void Lightbar::setBrightness(double brightness)
 bool Lightbar::writable() const
 {
     for (const QString &target : m_targets) {
+        if (viaSdl(target))
+            continue;
+#ifndef _WIN32
         const QString file = multicolor(target) ? target + "/multi_intensity" : channel(target, "red");
         if (::access(QFile::encodeName(file).constData(), W_OK) != 0)
             return false;
+#endif
     }
     return !m_targets.isEmpty();
 }
@@ -251,6 +273,8 @@ QStringList Lightbar::files() const
 {
     QStringList files;
     for (const QString &target : m_targets) {
+        if (viaSdl(target))
+            continue;
         if (multicolor(target)) {
             files << target + "/multi_intensity" << target + "/brightness";
             continue;

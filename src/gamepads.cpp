@@ -88,4 +88,16 @@ QList<GamepadInfo> scan(const QString &inputDirectory, const QString &sysClass)
     return found;
 }
 
+void battery(const GamepadInfo &info, int &percent, bool &charging)
+{
+    percent = -1;
+    charging = false;
+    if (info.battery.isEmpty())
+        return;
+    const QString capacity = readSys(info.battery + "/capacity");
+    if (!capacity.isEmpty())
+        percent = capacity.toInt();
+    charging = readSys(info.battery + "/status") == "Charging";
+}
+
 }

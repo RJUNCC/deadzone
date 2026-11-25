@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file alias="Main.qml">Main.qml</file>
+        <file alias="deadzone.png">deadzone.png</file>
         <file alias="AppearancePopup.qml">AppearancePopup.qml</file>
         <file alias="Ambient.qml">Ambient.qml</file>
         <file alias="Sparks.qml">Sparks.qml</file>

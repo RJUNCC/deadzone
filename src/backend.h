@@ -72,6 +72,10 @@ class Backend : public QObject {
     Q_PROPERTY(QString suggestedLaunch READ suggestedLaunch NOTIFY setupChanged)
     Q_PROPERTY(bool launchReady READ launchReady NOTIFY setupChanged)
     Q_PROPERTY(bool steamInputOff READ steamInputOff WRITE setSteamInputOff NOTIFY setupChanged)
+    // "linux" or "windows", for the few places the window explains setup.
+    Q_PROPERTY(QString platform READ platform CONSTANT)
+    // Drivers Windows needs that are not installed: "ViGEmBus", "HidHide".
+    Q_PROPERTY(QStringList missingDrivers READ missingDrivers NOTIFY setupChanged)
     Q_PROPERTY(int jumpButton READ jumpButton WRITE setJumpButton NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList flips READ flips NOTIFY flipsChanged)
     Q_PROPERTY(QVariantMap flipStats READ flipStats NOTIFY flipsChanged)
@@ -118,7 +122,7 @@ public:
     void setActive(bool active);
     bool hideFromGames() const { return !m_hiddenIds.isEmpty(); }
     void setHideFromGames(bool hide);
-    bool hideBusy() const { return m_hider != nullptr; }
+    bool hideBusy() const { return m_hider != nullptr || m_hiding; }
     bool exposed() const;
     QString notice() const { return m_notice; }
     QString error() const;
@@ -169,7 +173,9 @@ public:
     QString healthTrend() const;
     QString launchOptions() const { return m_launchOptions; }
     QString suggestedLaunch() const;
-    bool launchReady() const { return m_launchOptions.contains("SDL_GAMECONTROLLER_IGNORE_DEVICES=" + ignoreList()); }
+    bool launchReady() const;
+    QString platform() const;
+    QStringList missingDrivers() const;
     bool steamInputOff() const { return m_steamInputOff; }
     void setSteamInputOff(bool off);
     // Rocket League's launch options from Steam's localconfig.vdf text.
@@ -391,6 +397,10 @@ private:
     void onFlip(double gapMs, double x, double y);
     void onFlipCancel(double ms, double x, double y);
     void checkHolders();
+    // Platform hooks (backend_linux.cpp, backend_win.cpp).
+    bool queryBackground() const;
+    void startDeviceWatch();
+    void notify(const QString &title, const QString &body);
     QString uniqueName(const QString &base) const;
 
     QString m_configPath;
@@ -461,5 +471,6 @@ private:
     bool m_lightbarRule = false;
     QStringList m_hiddenIds;
     QProcess *m_hider = nullptr;
+    bool m_hiding = false;   // Windows: the elevated HidHide call is running.
     QString m_notice, m_hideError;
 };

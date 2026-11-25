@@ -4,3 +4,5 @@
 *.pkg.tar.*
 /dist/*.tar.gz
 /dist/aur/PKGBUILD
+/windeps/
+/build-win/

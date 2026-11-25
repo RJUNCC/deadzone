@@ -10,8 +10,12 @@
 #include <vector>
 
 #include "curves.h"
+#include "inputcodes.h"
 
-#include <linux/input.h>
+#ifdef _WIN32
+class QTimer;
+struct SDL_Gamepad;
+#endif
 
 // What the controller is doing right now, before and after the profile.
 struct LiveState {
@@ -49,6 +53,10 @@ public:
     void setJumpButton(int bit) { m_jumpBit = bit; }
     // 0 silences rumble from games; 1 passes it through unchanged.
     void setRumble(double strength) { m_rumble = strength; }
+#ifdef _WIN32
+    // ViGEmBus's thread hands over the motor speeds a game asked for, 0..255.
+    void applyRumble(int strong, int weak);
+#endif
 
 public slots:
     void start();
@@ -74,36 +82,64 @@ signals:
 private:
     enum Axis { LX, LY, RX, RY, L2, R2, AxisCount };
 
-    void readSource();
-    void readVirtual();
-    bool createVirtual(bool rumble);
-    void resync();
+    // Shared by every platform (remapper.cpp).
     double normalize(int axis, int value) const;
     void flush();
-    void emitEvent(int type, int code, int value);
     void handleKey(int code, int value);
     void handleHat(int code, int value);
     void setPhysical(int bit, bool down);
     void updateVirtual();
-    void noteReport(const timeval &time);
-    void uploadEffect(int requestId);
-    void eraseEffect(int requestId);
+    void noteReport(double seconds);
+
+    // Each platform's own (remapper_linux.cpp, remapper_win.cpp).
+    bool createVirtual(bool rumble);
+    void resync();
+    // Queues one change for the virtual pad; sendPending() delivers what is
+    // queued as one report, and an EV_SYN in between splits it in two.
+    void emitEvent(int type, int code, int value);
+    bool hasVirtual() const;
+    void sendPending();
+    void discardPending();
 
     QString m_path, m_driver;
     bool m_active = false;
     bool m_swapFaces = false;
-    bool m_dropped = false;
-    int m_source = -1, m_virtual = -1;
-    QSocketNotifier *m_sourceNotifier = nullptr, *m_virtualNotifier = nullptr;
 
     // Range of each source axis, so any controller normalizes the same way.
     struct Range { int min = 0, max = 255; bool present = false; };
     Range m_ranges[AxisCount];
-    int m_codes[AxisCount] = {};
     double m_raw[AxisCount] = {};
     int m_sent[AxisCount] = {};
+
+#ifdef _WIN32
+    void poll();
+
+    SDL_Gamepad *m_pad = nullptr;
+    void *m_client = nullptr, *m_target = nullptr;   // ViGEmBus's client and virtual pad.
+    QTimer *m_timer = nullptr;
+    int m_lastAxes[AxisCount] = {};
+    quint32 m_lastButtons = 0;
+    int m_hatX = 0, m_hatY = 0;
+    // The Xbox report being built, and whether it differs from the last sent.
+    struct {
+        quint16 buttons = 0;
+        quint8 leftTrigger = 0, rightTrigger = 0;
+        qint16 lx = 0, ly = 0, rx = 0, ry = 0;
+    } m_report;
+    bool m_reportDirty = false;
+#else
+    void readSource();
+    void readVirtual();
+    void uploadEffect(int requestId);
+    void eraseEffect(int requestId);
+
+    bool m_dropped = false;
+    int m_source = -1, m_virtual = -1;
+    QSocketNotifier *m_sourceNotifier = nullptr, *m_virtualNotifier = nullptr;
+    int m_codes[AxisCount] = {};
     std::vector<input_event> m_pending;
     QHash<int, int> m_effects;   // Virtual effect id to the id on the real controller.
+#endif
 
     std::atomic<bool> m_comboEnabled{true};
     std::atomic<double> m_rumble{1.0};

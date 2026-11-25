@@ -6,12 +6,16 @@ import QtQuick.Layouts
 // Getting Rocket League to use deadzone's controller and nothing else. Linux
 // cannot hide a controller from other programs, so the game and Steam have
 // to be told to look away from the real one; each step ticks off when done.
+// Windows can, with the HidHide driver, so its steps are fewer.
 Rectangle {
     id: root
 
+    readonly property bool win: backend.platform === "windows"
+    readonly property bool drivers: backend.missingDrivers.length === 0
     readonly property bool hidden: backend.hideFromGames && !backend.exposed
     readonly property bool running: backend.background && backend.onlyWhileGame
-    readonly property bool complete: hidden && backend.steamInputOff && backend.launchReady && (running || backend.active)
+    readonly property bool complete: win ? drivers && hidden && (running || backend.active)
+                                         : hidden && backend.steamInputOff && backend.launchReady && (running || backend.active)
     property bool expanded: !complete
 
     color: complete && !expanded ? Qt.tint(theme.surface, "#1a22c55e") : Qt.tint(theme.surface, "#1feab308")
@@ -105,25 +109,52 @@ Rectangle {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
             color: theme.text
-            text: qsTr("Deadzone gives the game a virtual Xbox pad with your settings. But Linux has no way to hide the real controller from other programs: Steam still lists it, silent while deadzone holds it, and makes it player 1. Your input then arrives as player 2, so the controller seems dead and Start opens split screen. These steps tell Steam and the game to look only at deadzone's pad.")
+            text: root.win
+                  ? qsTr("Deadzone gives the game a virtual Xbox pad with your settings. But the game and Steam can still read the real controller next to it, so your input arrives twice, or as player 2 with Start opening split screen. These steps hide the real controller so the game sees only deadzone's pad.")
+                  : qsTr("Deadzone gives the game a virtual Xbox pad with your settings. But Linux has no way to hide the real controller from other programs: Steam still lists it, silent while deadzone holds it, and makes it player 1. Your input then arrives as player 2, so the controller seems dead and Start opens split screen. These steps tell Steam and the game to look only at deadzone's pad.")
         }
 
         Step {
-            visible: root.expanded
+            visible: root.expanded && root.win
             number: 1
-            done: root.hidden
-            title: qsTr("Hide the controller's raw device from games")
-            detail: qsTr("Adds a udev rule, asking for your password once. Then unplug and replug the controller.")
-            AccentButton {
-                visible: !root.hidden
-                text: backend.hideBusy ? qsTr("Waiting for password…") : qsTr("Hide from games")
-                enabled: !backend.hideBusy
-                onClicked: backend.hideFromGames = true
+            done: root.drivers
+            title: qsTr("Install ViGEmBus and HidHide")
+            detail: root.drivers
+                    ? qsTr("Both drivers are installed.")
+                    : qsTr("Two free drivers deadzone needs: ViGEmBus creates its virtual Xbox pad, and HidHide hides the real controller from games. Install them, restart the computer, then open deadzone again. Missing: %1.").arg(backend.missingDrivers.join(", "))
+            RowLayout {
+                visible: !root.drivers
+                spacing: 8
+                AccentButton {
+                    visible: backend.missingDrivers.indexOf("ViGEmBus") >= 0
+                    text: qsTr("Get ViGEmBus")
+                    onClicked: Qt.openUrlExternally("https://github.com/nefarius/ViGEmBus/releases/latest")
+                }
+                AccentButton {
+                    visible: backend.missingDrivers.indexOf("HidHide") >= 0
+                    text: qsTr("Get HidHide")
+                    onClicked: Qt.openUrlExternally("https://github.com/nefarius/HidHide/releases/latest")
+                }
             }
         }
 
         Step {
             visible: root.expanded
+            number: root.win ? 2 : 1
+            done: root.hidden
+            title: root.win ? qsTr("Hide the real controller from games") : qsTr("Hide the controller's raw device from games")
+            detail: root.win ? qsTr("Uses HidHide, and Windows asks for permission once. Then turn the controller off and on.")
+                             : qsTr("Adds a udev rule, asking for your password once. Then unplug and replug the controller.")
+            AccentButton {
+                visible: !root.hidden
+                text: backend.hideBusy ? (root.win ? qsTr("Waiting for Windows…") : qsTr("Waiting for password…")) : qsTr("Hide from games")
+                enabled: !backend.hideBusy && (!root.win || root.drivers)
+                onClicked: backend.hideFromGames = true
+            }
+        }
+
+        Step {
+            visible: root.expanded && !root.win
             number: 2
             done: backend.steamInputOff
             title: qsTr("Turn off Steam Input for Rocket League")
@@ -140,7 +171,7 @@ Rectangle {
         }
 
         Step {
-            visible: root.expanded
+            visible: root.expanded && !root.win
             number: 3
             done: backend.launchReady
             title: qsTr("Tell Rocket League to ignore the real controller")
@@ -215,10 +246,11 @@ Rectangle {
 
         Step {
             visible: root.expanded
-            number: 4
+            number: root.win ? 3 : 4
             done: root.running
             title: qsTr("Keep deadzone remapping whenever you play")
-            detail: qsTr("After step 3, Rocket League only sees deadzone's pad, so deadzone has to be running. These two switches start it at login and have it take over only while the game runs.")
+            detail: root.win ? qsTr("Once the controller is hidden, Rocket League only sees deadzone's pad, so deadzone has to be running. These two switches start it when you sign in and have it take over only while the game runs.")
+                             : qsTr("After step 3, Rocket League only sees deadzone's pad, so deadzone has to be running. These two switches start it at login and have it take over only while the game runs.")
             AccentButton {
                 visible: !root.running
                 text: qsTr("Turn both on")
@@ -233,7 +265,8 @@ Rectangle {
             wrapMode: Text.Wrap
             color: theme.muted
             font.pixelSize: 12
-            text: qsTr("Restart Rocket League after steps 2 and 3. To go back to the controller on its own, turn Steam Input back on and remove the SDL_GAMECONTROLLER_IGNORE_DEVICES part from the launch options.")
+            text: root.win ? qsTr("Restart Rocket League after step 2. To go back to the controller on its own, turn off hiding with the switch at the bottom of the window.")
+                           : qsTr("Restart Rocket League after steps 2 and 3. To go back to the controller on its own, turn Steam Input back on and remove the SDL_GAMECONTROLLER_IGNORE_DEVICES part from the launch options.")
         }
     }
 }

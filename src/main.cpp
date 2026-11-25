@@ -17,8 +17,14 @@
 
 #include <csignal>
 #include <cstdio>
+
+#ifdef _WIN32
+#include <QSettings>
+#include <windows.h>
+#else
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include "backend.h"
 #include "clipboard.h"
@@ -29,7 +35,7 @@
 
 namespace {
 
-const char *version = "0.10.1";
+const char *version = "0.11.0";
 
 void usage(FILE *out)
 {
@@ -62,6 +68,31 @@ int list(bool json)
     return pads.isEmpty() ? 1 : 0;
 }
 
+#ifdef _WIN32
+// Ctrl+C in a console, or Windows signing out.
+BOOL WINAPI onConsoleEvent(DWORD)
+{
+    QMetaObject::invokeMethod(QCoreApplication::instance(), &QCoreApplication::quit, Qt::QueuedConnection);
+    return TRUE;
+}
+
+// The window is a GUI program, so a console it was started from only shows
+// its output if it attaches; double-clicked, there is none to attach to.
+void attachConsole()
+{
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        std::freopen("CONOUT$", "w", stdout);
+        std::freopen("CONOUT$", "w", stderr);
+    }
+}
+
+// The background copy holds this while it runs, so the window knows
+// whether to start one when it closes.
+QString runLockPath()
+{
+    return WindowLock::path() + ".run";
+}
+#else
 int signalPipe[2] = {-1, -1};
 
 void onSignal(int)
@@ -69,6 +100,7 @@ void onSignal(int)
     const char byte = 1;
     [[maybe_unused]] ssize_t ignored = ::write(signalPipe[1], &byte, 1);
 }
+#endif
 
 // Headless remapping, for starting at login. Ctrl+C or SIGTERM releases
 // the controllers cleanly.
@@ -78,12 +110,24 @@ int run(int argc, char *argv[])
     QCoreApplication app(argc, argv);
     app.setApplicationName("deadzone");
 
+#ifdef _WIN32
+    SetConsoleCtrlHandler(onConsoleEvent, TRUE);
+    // One background copy at a time.
+    if (WindowLock::acquire(runLockPath(), 0) < 0) {
+        std::fprintf(stderr, "deadzone: already running in the background\n");
+        return 0;
+    }
+    // Started at sign-in, it stops once the window turns the startup
+    // entry off, as disabling the systemd service would.
+    const bool startup = app.arguments().contains("--startup");
+#else
     if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, signalPipe) != 0)
         return 1;
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
     QSocketNotifier quitter(signalPipe[0], QSocketNotifier::Read);
     QObject::connect(&quitter, &QSocketNotifier::activated, &app, &QCoreApplication::quit);
+#endif
 
     Backend backend;
     if (!backend.active())
@@ -95,7 +139,18 @@ int run(int argc, char *argv[])
     const QString lockPath = WindowLock::path();
     QTimer windowCheck;
     windowCheck.setInterval(1000);
-    auto checkWindow = [&backend, lockPath] {
+    auto checkWindow = [&backend, lockPath
+#ifdef _WIN32
+                        , startup, &app
+#endif
+    ] {
+#ifdef _WIN32
+        if (startup && !QSettings("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                                  QSettings::NativeFormat).contains("Deadzone")) {
+            app.quit();
+            return;
+        }
+#endif
         const bool open = WindowLock::held(lockPath);
         if (open == backend.yielding())
             return;
@@ -128,6 +183,9 @@ int run(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+#ifdef _WIN32
+    attachConsole();
+#endif
     const QString command = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString("open");
     if (command == "--help" || command == "-h" || command == "help") {
         usage(stdout);
@@ -154,7 +212,11 @@ int main(int argc, char *argv[])
     // Matches the window to deadzone.desktop, so the compositor (Wayland
     // app_id) and the launcher pick up the installed icon.
     app.setDesktopFileName("deadzone");
+#ifdef _WIN32
+    app.setWindowIcon(QIcon(":/deadzone.png"));
+#else
     app.setWindowIcon(QIcon::fromTheme("deadzone"));
+#endif
 
     QQuickStyle::setStyle("Material");
 
@@ -173,15 +235,23 @@ int main(int argc, char *argv[])
     // Only one remapper can hold a controller. While the window is open it
     // does the work, so a running background service steps aside and is
     // started again when the window closes.
+#ifndef _WIN32
     if (QProcess::execute("systemctl", {"--user", "--quiet", "is-active", "deadzone"}) == 0)
         QProcess::execute("systemctl", {"--user", "stop", "deadzone"});
+#endif
 
     Theme theme;
     Backend backend;
     QObject::connect(&app, &QGuiApplication::aboutToQuit, &backend, [&backend] {
         backend.shutdown();
+#ifdef _WIN32
+        // A background copy already running takes over by itself.
+        if (backend.background() && !WindowLock::held(runLockPath()))
+            QProcess::startDetached(QCoreApplication::applicationFilePath(), {"run", "--startup"});
+#else
         if (backend.background())
             QProcess::startDetached("systemctl", {"--user", "start", "deadzone"});
+#endif
     });
 
     QQmlApplicationEngine engine;
