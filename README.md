@@ -203,7 +203,10 @@ checks for new controllers and for Rocket League.
 
 Turn on **Keep running without the window** in the Rocket League card, or
 run `deadzone run` yourself. While the window is open it does the remapping
-and the service waits; closing the window hands back to the service.
+and the service waits; closing the window hands back to the service. The
+service checks for an open window every second, so the two never hold the
+controller at once, even when the window is reopened quickly or crashed.
+Only one window opens at a time.
 `deadzone list --json` shows what Deadzone can see.
 
 ## Controllers

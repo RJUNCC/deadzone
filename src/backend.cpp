@@ -217,6 +217,27 @@ void Backend::selectNext()
         setSelected((m_selected + 1) % m_devices.size());
 }
 
+void Backend::updateLightbarTargets()
+{
+    QStringList lightbars;
+    if (!m_yielding)
+        for (const GamepadInfo &info : std::as_const(m_devices))
+            if (!info.lightbar.isEmpty())
+                lightbars.append(info.lightbar);
+    m_lightbar.setTargets(lightbars);
+}
+
+void Backend::setYielding(bool yielding)
+{
+    if (yielding == m_yielding)
+        return;
+    m_yielding = yielding;
+    updateLightbarTargets();
+    emit gameChanged();
+    restartWorkers();
+    emit hideChanged();
+}
+
 void Backend::setActive(bool active)
 {
     if (active == m_active)
@@ -1400,11 +1421,7 @@ void Backend::rescan()
         emit controllersChanged();
         emit errorChanged();
         emit setupChanged();
-        QStringList lightbars;
-        for (const GamepadInfo &info : std::as_const(m_devices))
-            if (!info.lightbar.isEmpty())
-                lightbars.append(info.lightbar);
-        m_lightbar.setTargets(lightbars);
+        updateLightbarTargets();
         updateBattery();
     }
     emit hideChanged();

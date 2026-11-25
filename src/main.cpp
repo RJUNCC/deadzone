@@ -12,6 +12,7 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QSocketNotifier>
+#include <QTimer>
 #include <QUrl>
 
 #include <csignal>
@@ -24,10 +25,11 @@
 #include "gamepads.h"
 #include "theme.h"
 #include "translator.h"
+#include "windowlock.h"
 
 namespace {
 
-const char *version = "0.10.0";
+const char *version = "0.10.1";
 
 void usage(FILE *out)
 {
@@ -86,6 +88,24 @@ int run(int argc, char *argv[])
     Backend backend;
     if (!backend.active())
         backend.setActive(true);
+
+    // While the window is open it has the controllers; this waits, and takes
+    // them back when it closes. Checking once a second also covers a window
+    // that opens while this is starting, or that crashed.
+    const QString lockPath = WindowLock::path();
+    QTimer windowCheck;
+    windowCheck.setInterval(1000);
+    auto checkWindow = [&backend, lockPath] {
+        const bool open = WindowLock::held(lockPath);
+        if (open == backend.yielding())
+            return;
+        backend.setYielding(open);
+        std::fprintf(stderr, open ? "deadzone: the window is open and has the controllers; waiting\n"
+                                  : "deadzone: the window closed; remapping again\n");
+    };
+    QObject::connect(&windowCheck, &QTimer::timeout, &app, checkWindow);
+    checkWindow();
+    windowCheck.start();
     QObject::connect(&backend, &Backend::errorChanged, &app, [&backend] {
         if (!backend.error().isEmpty())
             std::fprintf(stderr, "deadzone: %s\n", qPrintable(backend.error()));
@@ -142,6 +162,13 @@ int main(int argc, char *argv[])
     // re-evaluated when the Omarchy language changes.
     Translator translator;
     app.installTranslator(&translator);
+
+    // One window at a time. A window that is still closing gets a moment to
+    // let go; one that stays open keeps the controllers, and this one leaves.
+    if (WindowLock::acquire(WindowLock::path(), 3000) < 0) {
+        std::fprintf(stderr, "deadzone: already open in another window\n");
+        return 0;
+    }
 
     // Only one remapper can hold a controller. While the window is open it
     // does the work, so a running background service steps aside and is

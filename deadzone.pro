@@ -18,7 +18,8 @@ HEADERS += \
     src/clipboard.h \
     src/remapper.h \
     src/theme.h \
-    src/translator.h
+    src/translator.h \
+    src/windowlock.h
 
 SOURCES += \
     src/main.cpp \
@@ -31,6 +32,7 @@ SOURCES += \
     src/overlay.cpp \
     src/remapper.cpp \
     src/theme.cpp \
-    src/translator.cpp
+    src/translator.cpp \
+    src/windowlock.cpp
 
 RESOURCES += src/resources.qrc

@@ -23,6 +23,8 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include "theme.h"
+#include "windowlock.h"
+#include <unistd.h>
 #include "translator.h"
 
 // Plain literals: moc misreads braces inside raw strings and drops test cases.
@@ -998,6 +1000,38 @@ private slots:
         Theme theme(dir.path());
         QCOMPARE(theme.accent(), QString("#112233"));
         QCOMPARE(theme.accentForeground(), QString("white"));
+    }
+
+    void windowLockKeepsOneWindow()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.filePath("window.lock");
+        QVERIFY(!WindowLock::held(path));
+        const int first = WindowLock::acquire(path, 0);
+        QVERIFY(first >= 0);
+        QVERIFY(WindowLock::held(path));
+        // A second window gives up after its wait.
+        QCOMPARE(WindowLock::acquire(path, 100), -1);
+        // Once the first window is gone, the lock is free again.
+        ::close(first);
+        QVERIFY(!WindowLock::held(path));
+        const int second = WindowLock::acquire(path, 0);
+        QVERIFY(second >= 0);
+        ::close(second);
+    }
+
+    void serviceYieldsWithoutChangingSettings()
+    {
+        QTemporaryDir dir;
+        Backend backend(dir.filePath("config.json"), false);
+        backend.setActive(true);
+        backend.setOnlyWhileGame(false);
+        QVERIFY(backend.remapping());
+        backend.setYielding(true);
+        QVERIFY(!backend.remapping());
+        QVERIFY(backend.active());
+        backend.setYielding(false);
+        QVERIFY(backend.remapping());
     }
 
     void themeOmarchyFollowsTheDesktopPalette()

@@ -1,5 +1,5 @@
 pkgname=deadzone
-pkgver=0.10.0
+pkgver=0.10.1
 pkgrel=1
 pkgdesc='Stick deadzones, response curves, and trigger ranges for any controller'
 arch=('x86_64' 'aarch64')

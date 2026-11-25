@@ -139,7 +139,11 @@ public:
     bool gameRunning() const { return m_gameRunning; }
     bool onlyWhileGame() const { return m_onlyWhileGame; }
     void setOnlyWhileGame(bool only);
-    bool remapping() const { return m_active && (!m_onlyWhileGame || m_gameRunning); }
+    bool remapping() const { return m_active && !m_yielding && (!m_onlyWhileGame || m_gameRunning); }
+    // The background service steps aside while the window is open: it lets
+    // go of the controllers and the lightbar, without changing any setting.
+    void setYielding(bool yielding);
+    bool yielding() const { return m_yielding; }
     double gameTriggerDeadzone() const { return m_gameTriggerDeadzone; }
     int gameRevision() const { return m_gameRevision; }
     bool backgroundAvailable() const;
@@ -408,6 +412,8 @@ private:
     QTimer m_rescan, m_poll, m_fallbackScan, m_games, m_liveThrottle;
     QElapsedTimer m_liveShown;
     int m_frameInterval = 16;
+    bool m_yielding = false;
+    void updateLightbarTargets();
     bool m_overlayDirty = false;
 
     LiveState m_live;
