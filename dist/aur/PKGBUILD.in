@@ -1,6 +1,6 @@
 # Template for the AUR package; bin/release fills in the version and checksum.
-# Set _owner to the GitHub account the project is published under.
-_owner=CHANGE_ME
+# _owner is the GitHub account the project is published under.
+_owner=RJUNCC
 pkgname=deadzone
 pkgver=0
 pkgrel=1
